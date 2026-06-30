@@ -8,6 +8,7 @@ import urllib.request
 from pathlib import Path
 
 import fitz
+import pythainlp
 
 
 SRC = Path("C:/Project/computer-network-&-Internet/Chapter_1_Introduction.pdf")
@@ -243,22 +244,31 @@ def insert_thai_text(doc, items, cache):
     clipped = 0
     for index, item in enumerate(items, 1):
         page = doc[item["page"]]
+        original_size = item["size"]
+        # Reduce starting font size slightly to account for Thai tone marks
+        size = original_size * 0.85
         rect = fitz.Rect(item["bbox"])
-        rect.x0 = max(page.rect.x0, rect.x0 - 0.8)
-        rect.y0 = max(page.rect.y0, rect.y0 - 0.8)
-        rect.x1 = min(page.rect.x1, rect.x1 + 3.5)
-        rect.y1 = min(page.rect.y1, rect.y1 + 2.0)
+        
+        # Minimal padding to avoid crossing table boundaries or adjacent blocks
+        rect.x0 = max(page.rect.x0, rect.x0 - 0.5)
+        rect.y0 = max(page.rect.y0, rect.y0 - 0.5)
+        rect.x1 = min(page.rect.x1, rect.x1 + 0.5)
+        rect.y1 = min(page.rect.y1, rect.y1 + 1.0)
+        
         fontfile = FONT_BOLD if item["bold"] and Path(FONT_BOLD).exists() else FONT_REG
         fontname = "ThaiFontB" if item["bold"] else "ThaiFont"
-        translated = cache[item["text"]].replace("▪", "•").replace("□", "•")
+        
+        raw_translated = cache[item["text"]].replace("▪", "•").replace("□", "•")
+        # Tokenize Thai words and join with space to allow PyMuPDF to wrap text in tight table cells
+        words = pythainlp.word_tokenize(raw_translated, engine="newmm")
+        translated = " ".join(words)
 
-        size = item["size"]
-        if item["size"] <= 10:
-            min_size = max(3.2, item["size"] * 0.30)
-            lineheight = 0.94
-        else:
-            min_size = max(5.0, item["size"] * 0.45)
-            lineheight = 1.02
+        # Remove multiple spaces
+        translated = re.sub(r" +", " ", translated).strip()
+
+        min_size = max(4.0, original_size * 0.40)
+        lineheight = 1.15
+        
         rc = -1
         while size >= min_size:
             rc = page.insert_textbox(
@@ -275,10 +285,11 @@ def insert_thai_text(doc, items, cache):
                 break
             size -= 0.5
 
-        if size < item["size"]:
+        if size < original_size * 0.85:
             shrunk += 1
         if rc < 0:
             clipped += 1
+            # Force insert at min size if it still doesn't fit
             page.insert_textbox(
                 rect,
                 translated,

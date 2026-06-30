@@ -21,6 +21,7 @@ from pathlib import Path
 
 # pyrefly: ignore [missing-import]
 import fitz
+import pythainlp
 # pyrefly: ignore [missing-import]
 from flask import (
     Flask,
@@ -423,23 +424,25 @@ def run_translation(job_id, src_path):
         shrunk, clipped = 0, 0
         for index, item in enumerate(items, 1):
             page = doc[item["page"]]
+            original_size = item["size"]
+            size = original_size * 0.85
             rect = fitz.Rect(item["bbox"])
-            rect.x0 = max(page.rect.x0, rect.x0 - 0.8)
-            rect.y0 = max(page.rect.y0, rect.y0 - 0.8)
-            rect.x1 = min(page.rect.x1, rect.x1 + 3.5)
-            rect.y1 = min(page.rect.y1, rect.y1 + 2.0)
+            
+            rect.x0 = max(page.rect.x0, rect.x0 - 0.5)
+            rect.y0 = max(page.rect.y0, rect.y0 - 0.5)
+            rect.x1 = min(page.rect.x1, rect.x1 + 0.5)
+            rect.y1 = min(page.rect.y1, rect.y1 + 1.0)
 
-            fontfile = FONT_BOLD if item["bold"] and FONT_BOLD else FONT_REG
-            fontname = "ThaiFontB" if item["bold"] else "ThaiFont"
-            translated = sanitize_text(cache.get(item["text"], item["text"]))
+            raw_translated = sanitize_text(cache.get(item["text"], item["text"]))
+            
+            # Tokenize Thai words and join with space to allow PyMuPDF to wrap text in tight table cells
+            words = pythainlp.word_tokenize(raw_translated, engine="newmm")
+            translated = " ".join(words)
+            # Remove multiple spaces
+            translated = re.sub(r" +", " ", translated).strip()
 
-            size = item["size"]
-            if item["size"] <= 10:
-                min_scale = 0.30
-                lineheight = 0.94
-            else:
-                min_scale = 0.45
-                lineheight = 1.02
+            min_scale = 0.40
+            lineheight = 1.15
 
             color_hex = f"#{item['color']:06x}"
             font_weight = "bold" if item["bold"] else "normal"
@@ -575,15 +578,17 @@ def progress(job_id):
 def download(job_id, filename):
     with jobs_lock:
         job = jobs.get(job_id)
-    if not job or job["status"] != "complete":
-        return jsonify({"error": "ไฟล์ยังไม่พร้อม"}), 404
+        
+    out_path = OUTPUT_DIR / f"{job_id}.pdf"
+    if not job or job.get("status") != "complete":
+        if not out_path.exists():
+            return jsonify({"error": "ไฟล์ยังไม่พร้อม หรือไม่พบไฟล์"}), 404
 
-    out_path = Path(job["output"])
-    download_name = Path(job["filename"]).stem + "_TH.pdf"
+    # We use the filename passed in the URL (which usually has _TH.pdf already)
     return send_file(
         str(out_path),
         as_attachment=False,
-        download_name=download_name,
+        download_name=filename,
         mimetype="application/pdf",
     )
 
@@ -593,10 +598,12 @@ def preview(job_id, page):
     """Render a page of the translated PDF as a PNG image."""
     with jobs_lock:
         job = jobs.get(job_id)
-    if not job or job["status"] != "complete":
-        return jsonify({"error": "ยังไม่เสร็จ"}), 404
+        
+    out_path = OUTPUT_DIR / f"{job_id}.pdf"
+    if not job or job.get("status") != "complete":
+        if not out_path.exists():
+            return jsonify({"error": "ยังไม่เสร็จ หรือไม่พบไฟล์"}), 404
 
-    out_path = Path(job["output"])
     doc = fitz.open(str(out_path))
     if page < 0 or page >= len(doc):
         doc.close()
@@ -609,6 +616,39 @@ def preview(job_id, page):
     return Response(img_bytes, mimetype="image/png", headers={
         "Cache-Control": "public, max-age=3600",
     })
+
+@app.route("/history")
+def get_history():
+    history_list = []
+    # Find all {job_id}.pdf in OUTPUT_DIR
+    for out_file in OUTPUT_DIR.glob("*.pdf"):
+        job_id = out_file.stem
+        # Find corresponding original file in UPLOAD_DIR
+        matching_uploads = list(UPLOAD_DIR.glob(f"{job_id}_*"))
+        
+        if matching_uploads:
+            orig_path = matching_uploads[0]
+            original_name = orig_path.name[len(job_id)+1:]
+            
+            try:
+                doc = fitz.open(str(out_file))
+                pages = len(doc)
+                doc.close()
+            except:
+                pages = 0
+                
+            stat = out_file.stat()
+            history_list.append({
+                "job_id": job_id,
+                "filename": original_name,
+                "created_at": stat.st_mtime,
+                "size": stat.st_size,
+                "pages": pages
+            })
+            
+    # Sort descending by date
+    history_list.sort(key=lambda x: x["created_at"], reverse=True)
+    return jsonify({"history": history_list})
 
 
 # ---------------------------------------------------------------------------

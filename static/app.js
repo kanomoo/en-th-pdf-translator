@@ -17,6 +17,13 @@
     const completeSection = document.getElementById('complete-section');
     const errorSection = document.getElementById('error-section');
 
+    const appSidebar = document.getElementById('app-sidebar');
+    const sidebarToggleBtn = document.getElementById('sidebar-toggle-btn');
+    const sidebarCloseBtn = document.getElementById('sidebar-close-btn');
+    const newTranslationBtn = document.getElementById('new-translation-btn');
+    const historyList = document.getElementById('history-list');
+    const refreshHistoryBtn = document.getElementById('refresh-history-btn');
+
     const fileName = document.getElementById('file-name');
     const fileSize = document.getElementById('file-size');
     const filePages = document.getElementById('file-pages');
@@ -83,6 +90,48 @@
         });
         connectors.forEach((conn, i) => {
             conn.classList.toggle('done', i < activeIndex);
+        });
+    }
+
+    // ---- Sidebar Toggle (Mobile) ----
+    if (sidebarToggleBtn) {
+        sidebarToggleBtn.addEventListener('click', () => {
+            appSidebar.classList.toggle('open');
+        });
+    }
+
+    if (sidebarCloseBtn) {
+        sidebarCloseBtn.addEventListener('click', () => {
+            appSidebar.classList.remove('open');
+        });
+    }
+
+    // Close sidebar when clicking outside on mobile
+    document.addEventListener('click', (e) => {
+        if (appSidebar && appSidebar.classList.contains('open') && 
+            !appSidebar.contains(e.target) && 
+            !sidebarToggleBtn.contains(e.target)) {
+            appSidebar.classList.remove('open');
+        }
+    });
+
+    // ---- New Translation ----
+    if (newTranslationBtn) {
+        newTranslationBtn.addEventListener('click', () => {
+            currentJobId = null;
+            selectedFile = null;
+            fileInput.value = '';
+            totalPages = 0;
+            currentPreviewPage = 0;
+            previewSection.classList.add('hidden');
+            
+            // clear active state from history items
+            document.querySelectorAll('.history-item').forEach(el => el.classList.remove('active'));
+            
+            showSection(uploadSection);
+            if (window.innerWidth <= 860) {
+                appSidebar.classList.remove('open');
+            }
         });
     }
 
@@ -293,17 +342,74 @@
     }
 
     // ---- Preview ----
-    function loadPreview(page) {
+    function loadPreview(page = 0) {
+        if (!currentJobId || totalPages === 0) return;
+        
+        const container = document.getElementById('preview-scroll-container');
+        const dropdown = document.getElementById('page-dropdown');
+        
+        if (container.children.length === 0) {
+            container.innerHTML = '';
+            dropdown.innerHTML = '';
+            
+            for (let i = 0; i < totalPages; i++) {
+                const opt = document.createElement('option');
+                opt.value = i;
+                opt.textContent = `หน้า ${i + 1} / ${totalPages}`;
+                dropdown.appendChild(opt);
+                
+                const imgContainer = document.createElement('div');
+                imgContainer.className = 'preview-img-wrapper';
+                imgContainer.id = `preview-page-${i}`;
+                
+                const img = document.createElement('img');
+                img.src = '/preview/' + currentJobId + '/' + i + '?t=' + Date.now();
+                img.className = 'preview-img';
+                img.loading = 'lazy';
+                img.alt = `หน้า ${i + 1}`;
+                
+                imgContainer.appendChild(img);
+                container.appendChild(imgContainer);
+            }
+            
+            const frame = document.getElementById('preview-frame');
+            frame.addEventListener('scroll', () => {
+                let activePage = currentPreviewPage;
+                const wrappers = document.querySelectorAll('.preview-img-wrapper');
+                const frameRect = frame.getBoundingClientRect();
+                const center = frameRect.top + frameRect.height / 2;
+                
+                wrappers.forEach(w => {
+                    const rect = w.getBoundingClientRect();
+                    if (rect.top <= center && rect.bottom >= center) {
+                        activePage = parseInt(w.id.replace('preview-page-', ''));
+                    }
+                });
+                
+                if (currentPreviewPage !== activePage) {
+                    currentPreviewPage = activePage;
+                    updatePageIndicator();
+                }
+            });
+            
+            dropdown.addEventListener('change', (e) => {
+                const targetPage = parseInt(e.target.value);
+                const targetEl = document.getElementById(`preview-page-${targetPage}`);
+                if (targetEl) targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            });
+        }
+        
+        const targetEl = document.getElementById(`preview-page-${page}`);
+        if (targetEl) targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        
         currentPreviewPage = page;
-        previewImg.classList.add('loading');
-        previewImg.onload = () => previewImg.classList.remove('loading');
-        previewImg.onerror = () => previewImg.classList.remove('loading');
-        previewImg.src = '/preview/' + currentJobId + '/' + page + '?t=' + Date.now();
         updatePageIndicator();
     }
 
     function updatePageIndicator() {
-        pageIndicator.textContent = `หน้า ${currentPreviewPage + 1} / ${totalPages}`;
+        document.getElementById('current-page').textContent = currentPreviewPage + 1;
+        document.getElementById('total-pages').textContent = totalPages;
+        document.getElementById('page-dropdown').value = currentPreviewPage;
         prevPageBtn.disabled = currentPreviewPage <= 0;
         nextPageBtn.disabled = currentPreviewPage >= totalPages - 1;
     }
@@ -338,5 +444,94 @@
         previewSection.classList.add('hidden');
         showSection(uploadSection);
     });
+
+    // ---- History ----
+    async function loadHistory() {
+        historyList.innerHTML = '<div class="history-loading">กำลังโหลด...</div>';
+        try {
+            const response = await fetch('/history');
+            const data = await response.json();
+            
+            if (!data.history || data.history.length === 0) {
+                historyList.innerHTML = '<div class="history-empty">ไม่มีประวัติการแปล</div>';
+                return;
+            }
+            
+            historyList.innerHTML = '';
+            data.history.forEach(item => {
+                const li = document.createElement('li');
+                li.className = 'history-item';
+                
+                const date = new Date(item.created_at * 1000).toLocaleString('th-TH');
+                
+                li.innerHTML = `
+                    <div class="history-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                            <polyline points="14 2 14 8 20 8"></polyline>
+                            <line x1="16" y1="13" x2="8" y2="13"></line>
+                            <line x1="16" y1="17" x2="8" y2="17"></line>
+                            <polyline points="10 9 9 9 8 9"></polyline>
+                        </svg>
+                    </div>
+                    <div class="history-details">
+                        <div class="history-filename">${item.filename || item.job_id}</div>
+                        <div class="history-meta">
+                            <span>${date}</span>
+                            <span>${item.pages || '?'} หน้า</span>
+                        </div>
+                    </div>
+                `;
+                
+                li.addEventListener('click', () => {
+                    openHistoryItem(item);
+                    document.querySelectorAll('.history-item').forEach(el => el.classList.remove('active'));
+                    li.classList.add('active');
+                });
+                
+                historyList.appendChild(li);
+            });
+            
+        } catch (err) {
+            historyList.innerHTML = '<div class="history-empty" style="color:var(--error)">เกิดข้อผิดพลาดในการโหลดข้อมูล</div>';
+        }
+    }
+
+    function openHistoryItem(item) {
+        currentJobId = item.job_id;
+        totalPages = item.pages || 0;
+        eventSource = null; // Ensure we don't have dangling connections
+        
+        completeDetail.textContent = `เปิดจากประวัติการแปล (${totalPages} หน้า)`;
+        
+        const dlName = item.filename ? item.filename.replace(/\.pdf$/i, '') + '_TH.pdf' : 'translated.pdf';
+        downloadBtn.href = '/download/' + currentJobId + '/' + encodeURIComponent(dlName);
+        downloadBtn.target = '_blank';
+        
+        showSection(completeSection);
+        
+        const container = document.getElementById('preview-scroll-container');
+        if (container) container.innerHTML = ''; // reset preview
+        
+        if (totalPages > 0) {
+            previewSection.classList.remove('hidden');
+            loadPreview(0);
+        } else {
+            previewSection.classList.add('hidden');
+        }
+        
+        if (window.innerWidth <= 860) {
+            appSidebar.classList.remove('open');
+        }
+    }
+    
+    if (refreshHistoryBtn) {
+        refreshHistoryBtn.addEventListener('click', () => {
+            loadHistory();
+        });
+    }
+
+    // Load history on initial load
+    loadHistory();
 
 })();
