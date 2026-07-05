@@ -236,17 +236,19 @@ def extract_items(doc, parsing_mode="auto"):
                         real_x1 = min(prev_span["bbox"][2], prev_span["bbox"][0] + estimated_width)
                         gap = span["bbox"][0] - real_x1
                         
-                    column_x0s.append({
-                        "x0": span["bbox"][0],
-                        "gap": gap,
-                        "size": span.get("size", 12)
-                    })
+                    # Ignore spans that have a normal word space gap (0 to 1.2 ems)
+                    if gap < 0 or gap > span.get("size", 12) * 1.2 or gap == 9999:
+                        column_x0s.append({
+                            "x0": span["bbox"][0],
+                            "gap": gap,
+                            "size": span.get("size", 12)
+                        })
                     
             clusters = []
             for item in sorted(column_x0s, key=lambda x: x["x0"]):
                 if not clusters:
                     clusters.append([item])
-                elif item["x0"] - clusters[-1][-1]["x0"] < 15.0:
+                elif item["x0"] - clusters[-1][-1]["x0"] < 3.0:
                     clusters[-1].append(item)
                 else:
                     clusters.append([item])
@@ -280,8 +282,8 @@ def extract_items(doc, parsing_mode="auto"):
                     # (and the current phrase isn't already part of that same column)
                     is_col_boundary = False
                     for b in column_boundaries:
-                        if abs(span["bbox"][0] - b) < 15.0:
-                            if abs(current_spans[0]["bbox"][0] - b) > 15.0:
+                        if abs(span["bbox"][0] - b) < 5.0:
+                            if abs(current_spans[0]["bbox"][0] - b) > 5.0:
                                 is_col_boundary = True
                             break
                             
