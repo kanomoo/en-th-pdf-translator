@@ -439,32 +439,36 @@
     const paneLeft = document.getElementById('pane-left');
     const paneRight = document.getElementById('pane-right');
     let isScrollSyncActive = true;
-    let expectedScrollTopLeft = -1;
-    let expectedScrollTopRight = -1;
+    let isSyncingLeft = false;
+    let isSyncingRight = false;
 
     window.toggleScrollSync = function(active) {
         isScrollSyncActive = active;
         showToast(active ? 'Scroll synchronization enabled' : 'Scroll synchronization disabled');
     };
 
-    function syncScroll(event) {
+    function syncScrollLeft() {
         if (!isScrollSyncActive) return;
-        
-        const source = event.currentTarget;
-        
-        if (source === paneLeft) {
-            if (Math.abs(paneLeft.scrollTop - expectedScrollTopLeft) < 2) return;
-            expectedScrollTopRight = paneLeft.scrollTop;
-            paneRight.scrollTop = paneLeft.scrollTop;
-        } else {
-            if (Math.abs(paneRight.scrollTop - expectedScrollTopRight) < 2) return;
-            expectedScrollTopLeft = paneRight.scrollTop;
-            paneLeft.scrollTop = paneRight.scrollTop;
+        if (isSyncingLeft) {
+            isSyncingLeft = false;
+            return;
         }
+        isSyncingRight = true;
+        paneRight.scrollTop = paneLeft.scrollTop;
     }
 
-    paneLeft.addEventListener('scroll', syncScroll);
-    paneRight.addEventListener('scroll', syncScroll);
+    function syncScrollRight() {
+        if (!isScrollSyncActive) return;
+        if (isSyncingRight) {
+            isSyncingRight = false;
+            return;
+        }
+        isSyncingLeft = true;
+        paneLeft.scrollTop = paneRight.scrollTop;
+    }
+
+    paneLeft.addEventListener('scroll', syncScrollLeft);
+    paneRight.addEventListener('scroll', syncScrollRight);
 
     // ---- Tweaks Config Panel ----
     window.toggleTweaks = function() {

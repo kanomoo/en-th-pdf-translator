@@ -186,7 +186,9 @@ def extract_items(doc):
                 for row in rows:
                     ry0, ry1 = row["core_bbox"][1], row["core_bbox"][3]
                     overlap = max(0, min(py1, ry1) - max(py0, ry0))
-                    if overlap > (py1 - py0) * 0.5:
+                    
+                    min_height = min(py1 - py0, ry1 - ry0)
+                    if overlap > min_height * 0.5:
                         row["spans"].append(span)
                         row["bbox"] = [
                             min(row["bbox"][0], span["bbox"][0]),
