@@ -252,7 +252,6 @@ main.main-content {
   margin-bottom: 2px;
   border: 1px solid transparent;
   position: relative;
-  group-hover: show-actions;
 }
 
 .history-item:hover {
@@ -1080,11 +1079,13 @@ body.theme-light .tweaks-trigger {
   border-radius: 2px;
   outline: none;
   -webkit-appearance: none;
+  appearance: none;
   cursor: pointer;
 }
 
 .tweak-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
+  appearance: none;
   width: 10px;
   height: 10px;
   border-radius: 50%;

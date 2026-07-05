@@ -290,8 +290,17 @@ def extract_items(doc):
                         parts.append(s["text"].strip())
                         all_spans.append(s)
                     line_str = " ".join(parts).strip()
-                    if line_str:
+                    if not line_str:
+                        continue
+                        
+                    if not lines_text:
                         lines_text.append(line_str)
+                    else:
+                        first_word = line_str.split()[0]
+                        if bool(re.match(r'^(\d+[\.\)]|[•\-\*>])$', first_word)):
+                            lines_text.append(line_str)
+                        else:
+                            lines_text[-1] += " " + line_str
                         
                 text = clean_text("\n".join(lines_text))
                 if not text:
@@ -546,7 +555,7 @@ def run_translation(job_id, src_path):
             # Adjust max lineheight for table cells which have expanded bounding boxes
             lineheight = max(1.0, min(calculated_lineheight, 2.0))
 
-            html = f"""<div style="font-family: sans-serif; font-size: {size}pt; font-weight: {font_weight}; color: {color_hex}; line-height: {lineheight}; text-align: left; margin: 0;">{html_text}</div>"""
+            html = f"""<div style="font-family: sans-serif; font-size: {size}pt; font-weight: {font_weight}; color: {color_hex}; line-height: {lineheight}; text-align: left; margin: 0; margin-top: -0.2em;">{html_text}</div>"""
             
             spare_height, scale = page.insert_htmlbox(
                 rect, html,
