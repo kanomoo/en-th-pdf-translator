@@ -737,7 +737,7 @@ def run_translation(job_id, src_path, parsing_mode="auto"):
             jobs[job_id]["total_pages"] = total_pages
 
         emit(job_id, "complete", {
-            "message": "แปลเสร็จสมบูรณ์! 🎉",
+            "message": "แปลเสร็จสมบูรณ์!",
             "filename": src_path.stem + "_TH.pdf",
             "pages": total_pages,
             "shrunk": shrunk,
