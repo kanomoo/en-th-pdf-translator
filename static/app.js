@@ -255,6 +255,16 @@
 
     // ---- Workspace View (PDF.js Rendering for text selection) ----
     let currentRenderSession = 0;
+    let reloadDebounceTimer = null;
+
+    function debouncedReloadWorkspace(delay = 250) {
+        if (reloadDebounceTimer) clearTimeout(reloadDebounceTimer);
+        reloadDebounceTimer = setTimeout(() => {
+            if (currentJobId && currentOrigFilename && currentDlFilename) {
+                showWorkspace(currentJobId, currentOrigFilename, currentDlFilename);
+            }
+        }, delay);
+    }
 
     async function renderPDF(url, container, sessionId) {
         try {
@@ -263,43 +273,30 @@
             
             if (currentRenderSession !== sessionId) return;
             
-            // Setup responsive scaling observer
+            // Setup responsive scaling observer to re-render when container resizes
             if (!container._resizeObserver) {
+                let lastWidth = container.clientWidth;
                 container._resizeObserver = new ResizeObserver(entries => {
                     for (let entry of entries) {
-                        const newWidth = entry.contentRect.width - 40;
-                        if (newWidth <= 0) continue;
-                        
-                        container.querySelectorAll('.pdf-page-container').forEach(pageDiv => {
-                            const baseWidth = parseFloat(pageDiv.dataset.baseWidth);
-                            if (!baseWidth) return;
-                            
-                            // Combine layout scaling with manual user zoom
-                            const userZoom = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--pdf-zoom').trim()) || 1.0;
-                            const layoutScale = newWidth / baseWidth;
-                            const finalScale = layoutScale * userZoom;
-                            
-                            pageDiv.style.transform = `scale(${finalScale})`;
-                            pageDiv.style.transformOrigin = 'top center';
-                            
-                            const baseHeight = parseFloat(pageDiv.dataset.baseHeight);
-                            const scaledHeight = baseHeight * finalScale;
-                            const diff = scaledHeight - baseHeight;
-                            pageDiv.style.marginBottom = `${20 + diff}px`;
-                        });
+                        const newWidth = entry.contentRect.width;
+                        if (Math.abs(newWidth - lastWidth) > 20) {
+                            lastWidth = newWidth;
+                            debouncedReloadWorkspace(300);
+                        }
                     }
                 });
                 container._resizeObserver.observe(container);
             }
             
-            // Calculate scale based on container width (accounting for padding)
-            let containerWidth = container.clientWidth - 64; // 32px padding on left/right
-            if (containerWidth <= 0) {
-                // Fallback if clientWidth is 0 (e.g., container not fully visible yet)
+            // Calculate scale based on container width and user zoom
+            const userZoom = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--pdf-zoom').trim()) || 1.0;
+            let availableWidth = container.clientWidth - 40; // 20px padding left/right
+            if (availableWidth <= 0) {
                 const rect = container.getBoundingClientRect();
-                containerWidth = (rect.width || 600) - 64;
-                if (containerWidth <= 0) containerWidth = 600;
+                availableWidth = (rect.width || 600) - 40;
+                if (availableWidth <= 0) availableWidth = 600;
             }
+            const targetWidth = availableWidth * userZoom;
 
             for (let i = 1; i <= pdf.numPages; i++) {
                 if (currentRenderSession !== sessionId) {
@@ -310,7 +307,7 @@
                 
                 // Get unscaled viewport to calculate ratio
                 const unscaledViewport = page.getViewport({ scale: 1.0 });
-                const scale = containerWidth / unscaledViewport.width;
+                const scale = targetWidth / unscaledViewport.width;
                 const viewport = page.getViewport({ scale: scale });
                 
                 const pageDiv = document.createElement('div');
@@ -321,9 +318,6 @@
                 pageDiv.style.height = viewport.height + 'px';
                 pageDiv.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
                 pageDiv.style.backgroundColor = 'white'; // Ensure PDF background is white
-                
-                pageDiv.dataset.baseWidth = viewport.width;
-                pageDiv.dataset.baseHeight = viewport.height;
                 
                 const outputScale = (window.devicePixelRatio || 1) * 1.5; // Render at 1.5x resolution for sharper scaling
 
@@ -352,6 +346,7 @@
                 textLayerDiv.setAttribute('class', 'textLayer');
                 textLayerDiv.style.width = viewport.width + 'px';
                 textLayerDiv.style.height = viewport.height + 'px';
+                textLayerDiv.style.setProperty('--scale-factor', viewport.scale);
                 pageDiv.appendChild(textLayerDiv);
                 
                 pdfjsLib.renderTextLayer({
@@ -373,6 +368,11 @@
         uploadScreen.style.display = 'none';
         processingScreen.style.display = 'none';
         splitScreen.style.display = 'flex';
+        
+        const container = document.querySelector('.split-pane-container');
+        if (container && !container.className.includes('view-')) {
+            container.classList.add('view-both');
+        }
         
         currentJobId = jobId;
         currentOrigFilename = origFilename;
@@ -541,14 +541,7 @@
         const zoomLevel = val / 100.0;
         document.documentElement.style.setProperty('--pdf-zoom', zoomLevel);
         document.getElementById('zoom-val-display').textContent = val + '%';
-        
-        // Trigger a fake resize to update the observer
-        const paneLeft = document.getElementById('pane-left');
-        if (paneLeft && paneLeft.querySelector('.pdf-preview-scroll-container')._resizeObserver) {
-            // A slight style tweak triggers ResizeObserver
-            paneLeft.style.paddingTop = '1px';
-            setTimeout(() => paneLeft.style.paddingTop = '0', 0);
-        }
+        debouncedReloadWorkspace(150);
     };
 
     // Split panel resizing drag handle
@@ -575,6 +568,7 @@
             isDragging = false;
             handler.classList.remove('dragging');
             document.body.style.cursor = '';
+            debouncedReloadWorkspace(100);
         }
     });
 
@@ -783,6 +777,20 @@
 
     // Call checkAuthStatus on startup
     checkAuthStatus();
+
+    // Mobile View Mode Switcher
+    window.setMobileView = function(mode) {
+        const container = document.querySelector('.split-pane-container');
+        if (!container) return;
+        container.classList.remove('view-en', 'view-th', 'view-both');
+        container.classList.add('view-' + mode);
+        
+        document.querySelectorAll('.mobile-tab-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.view === mode);
+        });
+        
+        debouncedReloadWorkspace(150);
+    };
 
 })();
 

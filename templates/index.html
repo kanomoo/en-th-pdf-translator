@@ -171,6 +171,11 @@
 
         <!-- STATE 3: WORKSPACE SPLIT PANES (Translation PDF view) -->
         <div class="state-workspace" id="split-screen" style="display: none;">
+          <div class="mobile-view-switcher">
+            <button class="mobile-tab-btn active" data-view="both" onclick="setMobileView('both')">ทั้ง 2 ภาษา</button>
+            <button class="mobile-tab-btn" data-view="en" onclick="setMobileView('en')">English</button>
+            <button class="mobile-tab-btn" data-view="th" onclick="setMobileView('th')">ไทย (แปล)</button>
+          </div>
           <div class="split-pane-container">
             
             <!-- Left Pane: Original English PDF -->

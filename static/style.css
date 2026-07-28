@@ -445,7 +445,9 @@ body.theme-light .main-header {
 .header-left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .menu-toggle-btn {
@@ -460,6 +462,7 @@ body.theme-light .main-header {
   height: 34px;
   border-radius: 6px;
   transition: var(--transition-smooth);
+  flex-shrink: 0;
 }
 
 .menu-toggle-btn:hover {
@@ -472,19 +475,30 @@ body.theme-light .main-header {
   font-size: 12px;
   background: var(--surface-base);
   border: 1px solid var(--border);
-  padding: 6px 12px;
+  padding: 5px 10px;
   border-radius: 6px;
   color: var(--fg-muted);
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   font-weight: 500;
+  min-width: 0;
+  max-width: 240px;
+}
+
+#header-doc-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  display: block;
 }
 
 .header-actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 /* Sync Scroll Switch style */
@@ -776,16 +790,21 @@ body.theme-light .upload-container {
    ========================================================================= */
 .state-workspace {
   display: flex;
+  flex-direction: column;
   height: 100%;
   width: 100%;
   animation: fadeIn 0.4s ease;
+  position: relative;
+  overflow: hidden;
 }
 
 .split-pane-container {
   display: flex;
+  flex: 1;
   height: 100%;
   width: 100%;
   position: relative;
+  min-height: 0;
 }
 
 .pane {
@@ -848,7 +867,6 @@ body.theme-light .pane-right {
   transition: border-color 0.3s ease, background-color 0.4s ease;
   width: 100%;
   max-width: 850px;
-  zoom: var(--pdf-zoom, 1);
 }
 
 .pane-left .document-page-card {
@@ -1286,7 +1304,11 @@ body.theme-light .tweaks-trigger {
   opacity: 1;
 }
 
-/* Responsive Mobile Layout */
+/* Responsive Mobile & Tablet Layout */
+.mobile-view-switcher {
+  display: none;
+}
+
 @media (max-width: 768px) {
   .app-container {
     flex-direction: column;
@@ -1294,17 +1316,17 @@ body.theme-light .tweaks-trigger {
   
   aside.sidebar {
     width: 100%;
-    height: 56px;
+    height: 52px;
     flex-direction: row;
     border-right: 0;
     border-bottom: 1px solid var(--border);
     align-items: center;
-    padding: 0 16px;
+    padding: 0 12px;
   }
   
   aside.sidebar.collapsed {
     margin-left: 0;
-    transform: translateY(-56px);
+    transform: translateY(-52px);
     height: 0;
     overflow: hidden;
   }
@@ -1317,22 +1339,119 @@ body.theme-light .tweaks-trigger {
   .new-btn, .history-section, .sidebar-footer {
     display: none;
   }
-  
-  .split-pane-container {
-    flex-direction: column;
+
+  .main-header {
+    padding: 0 10px;
+    height: 52px;
   }
-  
-  .pane {
-    width: 100% !important;
-    height: 50% !important;
-    padding: 16px;
+
+  .document-title-badge {
+    max-width: 120px;
+    padding: 4px 8px;
+    font-size: 11px;
   }
-  
-  .pane-left {
-    border-right: 0;
+
+  .sync-toggle-container span {
+    display: none;
+  }
+
+  #user-display-name {
+    max-width: 80px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: inline-block;
+  }
+
+  .btn-primary, .btn-secondary {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+
+  .mobile-view-switcher {
+    display: flex;
+    background: var(--surface-base);
     border-bottom: 1px solid var(--border);
+    padding: 6px 12px;
+    gap: 6px;
+    justify-content: center;
+    z-index: 5;
+    flex-shrink: 0;
   }
-  
+
+  .mobile-tab-btn {
+    flex: 1;
+    padding: 6px 10px;
+    font-size: 11px;
+    font-family: var(--font-mono);
+    font-weight: 600;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--fg-muted);
+    cursor: pointer;
+    transition: var(--transition-smooth);
+  }
+
+  .mobile-tab-btn.active {
+    background: var(--surface-hover);
+    color: var(--fg);
+    border-color: var(--border-focus);
+  }
+
+  .split-pane-container {
+    flex-direction: row !important;
+    overflow-x: hidden;
+    flex: 1;
+    height: 100%;
+    width: 100%;
+  }
+
+  /* View mode: Both (Default side-by-side on mobile) */
+  .split-pane-container:not(.view-en):not(.view-th) .pane-left,
+  .split-pane-container.view-both .pane-left {
+    width: 50% !important;
+    display: flex !important;
+    padding: 8px 4px 8px 8px !important;
+  }
+  .split-pane-container:not(.view-en):not(.view-th) .pane-right,
+  .split-pane-container.view-both .pane-right {
+    width: 50% !important;
+    display: flex !important;
+    padding: 8px 8px 8px 4px !important;
+  }
+
+  /* View mode: English only (Full width) */
+  .split-pane-container.view-en .pane-left {
+    width: 100% !important;
+    display: flex !important;
+    padding: 12px 6px !important;
+  }
+  .split-pane-container.view-en .pane-right {
+    display: none !important;
+  }
+
+  /* View mode: Thai only (Full width) */
+  .split-pane-container.view-th .pane-right {
+    width: 100% !important;
+    display: flex !important;
+    padding: 12px 6px !important;
+  }
+  .split-pane-container.view-th .pane-left {
+    display: none !important;
+  }
+
+  .pane {
+    height: 100% !important;
+    overflow-y: auto !important;
+    box-sizing: border-box;
+  }
+
+  .pane-left {
+    border-right: 1px solid var(--border);
+    border-bottom: 0;
+  }
+
   .split-resizer {
     display: none;
   }
@@ -1567,5 +1686,35 @@ body.theme-light .preview-img {
   justify-content: center;
   align-items: center;
 }
+
+/* =========================================================================
+   PDF.js Text Layer Selection Alignment Fixes
+   ========================================================================= */
+.pdf-page-container {
+  box-sizing: content-box;
+}
+
+.textLayer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
+  opacity: 0.25;
+  line-height: 1;
+  transform-origin: 0 0;
+  pointer-events: auto;
+  z-index: 2;
+}
+
+.textLayer :is(span, br) {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0 0;
+}
+
 
 
