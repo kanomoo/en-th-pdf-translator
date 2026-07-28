@@ -1,6 +1,6 @@
 import re
 
-with open('ดีไซน์เว็บแปลภาษา-Translator-PDF/translator-pdf-prototype.html', 'r', encoding='utf-8') as f:
+with open('design/translator-pdf-prototype.html', 'r', encoding='utf-8') as f:
     content = f.read()
 
 # Extract CSS

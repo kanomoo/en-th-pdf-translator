@@ -270,7 +270,6 @@ def insert_thai_text(doc, items, cache):
         lineheight = 1.05
         
         while size >= min_size:
-            # We use insert_htmlbox here to match app.py's implementation which supports ZWSP better
             color_hex = f"#{item['color']:06x}"
             font_weight = "bold" if item["bold"] else "normal"
             html_text = translated.replace('\n', '<br>')
@@ -289,7 +288,6 @@ def insert_thai_text(doc, items, cache):
             shrunk += 1
         if rc < 0:
             clipped += 1
-            # Force insert at min size if it still doesn't fit
             html = f"""<div style="font-family: sans-serif; font-size: {min_size}pt; font-weight: {font_weight}; color: {color_hex}; line-height: {lineheight}; text-align: left; margin: 0;">{html_text}</div>"""
             page.insert_htmlbox(
                 rect, html,

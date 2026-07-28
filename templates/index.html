@@ -10,9 +10,11 @@
   <!-- PDF.js library for text selection support -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf_viewer.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
+  <!-- Google Identity Services SDK -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body class="theme-dark">
+
 
   <div class="radial-glow"></div>
 
@@ -80,8 +82,17 @@
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Download Translated
           </a>
+
+          <!-- Auth User Button -->
+          <div class="auth-btn-container" id="auth-btn-wrapper">
+            <button id="auth-modal-btn" onclick="openAuthModal()" class="btn-primary" style="background: var(--surface-card); color: var(--fg); border: 1px solid var(--border);">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              <span id="user-display-name">เข้าสู่ระบบ</span>
+            </button>
+          </div>
         </div>
       </header>
+
 
       <div class="workspace-area">
 
@@ -228,12 +239,68 @@
     </div>
   </div>
 
-  <!-- TOAST NOTIFICATION CONTAINER -->
-  <div class="toast" id="toast-notif">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-    <span id="toast-message">Task updated</span>
+  <!-- AUTH MODAL (LOGIN & REGISTER) -->
+  <div class="auth-modal-overlay" id="auth-modal" style="display: none;">
+    <div class="auth-modal-card">
+      <button class="auth-modal-close" onclick="closeAuthModal()">&times;</button>
+      
+      <div class="auth-tabs">
+        <button class="auth-tab active" id="tab-login" onclick="switchAuthTab('login')">เข้าสู่ระบบ</button>
+        <button class="auth-tab" id="tab-register" onclick="switchAuthTab('register')">สมัครสมาชิก</button>
+      </div>
+
+      <div class="auth-error-msg" id="auth-error-box" style="display: none;"></div>
+
+      <!-- GOOGLE LOGIN SECTION -->
+      <div class="google-login-wrapper" style="margin-bottom: 16px;">
+        <div id="g_id_onload"
+             data-client_id="{{ google_client_id }}"
+             data-callback="handleGoogleCredentialResponse"
+             data-auto_prompt="false">
+        </div>
+        <div class="g_id_signin"
+             data-type="standard"
+             data-shape="rectangular"
+             data-theme="outline"
+             data-text="signin_with"
+             data-size="large"
+             data-logo_alignment="left"
+             data-width="100%">
+        </div>
+      </div>
+
+      <div class="auth-divider"><span>หรือ</span></div>
+
+
+      <!-- LOGIN FORM -->
+      <form id="form-login" onsubmit="handleLoginSubmit(event)">
+        <div class="auth-input-group">
+          <label>อีเมล (Email)</label>
+          <input type="email" id="login-email" required placeholder="name@example.com">
+        </div>
+        <div class="auth-input-group">
+          <label>รหัสผ่าน (Password)</label>
+          <input type="password" id="login-password" required placeholder="••••••••">
+        </div>
+        <button type="submit" class="auth-submit-btn">เข้าสู่ระบบ</button>
+      </form>
+
+      <!-- REGISTER FORM -->
+      <form id="form-register" onsubmit="handleRegisterSubmit(event)" style="display: none;">
+        <div class="auth-input-group">
+          <label>อีเมล (Email)</label>
+          <input type="email" id="reg-email" required placeholder="name@example.com">
+        </div>
+        <div class="auth-input-group">
+          <label>รหัสผ่าน (อย่างน้อย 6 ตัวอักษร)</label>
+          <input type="password" id="reg-password" required minlength="6" placeholder="••••••••">
+        </div>
+        <button type="submit" class="auth-submit-btn">สร้างบัญชีผู้ใช้</button>
+      </form>
+    </div>
   </div>
 
   <script src="{{ url_for('static', filename='app.js') }}?v=4"></script>
 </body>
 </html>
+

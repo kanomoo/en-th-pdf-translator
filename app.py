@@ -19,6 +19,9 @@ import urllib.request
 import uuid
 from pathlib import Path
 
+import sqlite3
+from werkzeug.security import generate_password_hash, check_password_hash
+
 # pyrefly: ignore [missing-import]
 import fitz
 # pyrefly: ignore [missing-import]
@@ -31,22 +34,90 @@ from flask import (
     render_template,
     request,
     send_file,
+    session,
 )
 
 # ---------------------------------------------------------------------------
 # App setup
 # ---------------------------------------------------------------------------
 app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", "pdf-translator-secret-key-2026")
 
 BASE_DIR = Path(__file__).resolve().parent
+DB_PATH = BASE_DIR / "database.db"
+
+def init_db():
+    conn = sqlite3.connect(str(DB_PATH))
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS translation_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            job_id TEXT UNIQUE NOT NULL,
+            original_filename TEXT NOT NULL,
+            file_size INTEGER DEFAULT 0,
+            pages INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+init_db()
+
+def get_db():
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    return conn
+
 UPLOAD_DIR = BASE_DIR / "uploads"
 OUTPUT_DIR = BASE_DIR / "output"
 CACHE_DIR = BASE_DIR / "cache"
+DOCS_DIR = BASE_DIR / "docs"
 
-for d in (UPLOAD_DIR, OUTPUT_DIR, CACHE_DIR):
+SCRIPTS_DIR = BASE_DIR / "scripts"
+EXAMPLES_DIR = BASE_DIR / "examples"
+DESIGN_DIR = BASE_DIR / "design"
+
+for d in (UPLOAD_DIR, OUTPUT_DIR, CACHE_DIR, DOCS_DIR, SCRIPTS_DIR, EXAMPLES_DIR, DESIGN_DIR):
     d.mkdir(parents=True, exist_ok=True)
 
+# Clean up legacy root files if they exist (moved to subdirectories)
+for _legacy_file in ["debug.py", "extract.py", "test_extract.py", "translate_pdf.py", "GETTING_STARTED.md", "DEPLOY_TO_GITHUB.md", "organize.py", "organize_cleanup.py"]:
+    _p = BASE_DIR / _legacy_file
+    if _p.exists():
+        try:
+            _p.unlink()
+        except Exception:
+            pass
+
+for _legacy_pdf in ["1_6 - Cover.pdf", "Ch1 Introduction.pdf"]:
+    _p = BASE_DIR / _legacy_pdf
+    if _p.exists():
+        try:
+            _p.rename(EXAMPLES_DIR / _legacy_pdf)
+        except Exception:
+            pass
+
+_old_design_dir = BASE_DIR / "ดีไซน์เว็บแปลภาษา-Translator-PDF"
+if _old_design_dir.exists():
+    try:
+        import shutil
+        shutil.rmtree(_old_design_dir, ignore_errors=True)
+    except Exception:
+        pass
+
 app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100 MB max upload
+
 
 # ---------------------------------------------------------------------------
 # Font discovery (cross-platform)
@@ -679,13 +750,152 @@ def run_translation(job_id, src_path, parsing_mode="auto"):
         emit(job_id, "error", {"message": str(e)})
 
 
+import base64
+
+def decode_google_id_token(token):
+    """Helper to decode Google OAuth JWT credential payload."""
+    try:
+        parts = token.split(".")
+        if len(parts) != 3:
+            return None
+        payload_b64 = parts[1]
+        padded = payload_b64 + "=" * (-len(payload_b64) % 4)
+        decoded_bytes = base64.urlsafe_b64decode(padded)
+        payload = json.loads(decoded_bytes.decode("utf-8"))
+        return payload
+    except Exception as e:
+        print(f"Error decoding Google ID token: {e}")
+        return None
+
+
 # ---------------------------------------------------------------------------
-# Flask routes
+# Auth Routes
 # ---------------------------------------------------------------------------
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    google_client_id = os.environ.get("GOOGLE_CLIENT_ID", "199187564058-r2jnh8frc0u2o0cp1cte4kc25050g06g.apps.googleusercontent.com")
+    return render_template("index.html", google_client_id=google_client_id)
+
+
+
+@app.route("/api/google-login", methods=["POST"])
+def google_login():
+    data = request.get_json() or {}
+    token = data.get("credential") or ""
+
+    if not token:
+        return jsonify({"error": "ไม่พบข้อมูล Token จาก Google"}), 400
+
+    payload = decode_google_id_token(token)
+    if not payload:
+        return jsonify({"error": "Token จาก Google ไม่ถูกต้อง"}), 400
+
+    email = (payload.get("email") or "").strip().lower()
+    if not email or "@" not in email:
+        return jsonify({"error": "ไม่สามารถดึงอีเมลจากบัญชี Google ได้"}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE email = ?", (email,))
+    user = cursor.fetchone()
+
+    if not user:
+        # Auto-register Google user
+        dummy_hash = generate_password_hash(f"google_oauth_{uuid.uuid4().hex}")
+        cursor.execute("INSERT INTO users (email, password_hash) VALUES (?, ?)", (email, dummy_hash))
+        conn.commit()
+        user_id = cursor.lastrowid
+    else:
+        user_id = user["id"]
+
+    conn.close()
+
+    session["user_id"] = user_id
+    session["email"] = email
+    return jsonify({
+        "success": True,
+        "user": {
+            "id": user_id,
+            "email": email,
+            "name": payload.get("name", ""),
+            "picture": payload.get("picture", "")
+        }
+    })
+
+
+@app.route("/api/register", methods=["POST"])
+def register():
+    data = request.get_json() or {}
+    email = (data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
+
+    if not email or "@" not in email:
+        return jsonify({"error": "กรุณากรอกอีเมลให้ถูกต้อง"}), 400
+    if len(password) < 6:
+        return jsonify({"error": "รหัสผ่านต้องมีความยาวอย่างน้อย 6 ตัวอักษร"}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        password_hash = generate_password_hash(password)
+        cursor.execute("INSERT INTO users (email, password_hash) VALUES (?, ?)", (email, password_hash))
+        conn.commit()
+        user_id = cursor.lastrowid
+        conn.close()
+
+        session["user_id"] = user_id
+        session["email"] = email
+        return jsonify({"success": True, "user": {"id": user_id, "email": email}})
+    except sqlite3.IntegrityError:
+        conn.close()
+        return jsonify({"error": "อีเมลนี้ถูกใช้งานในระบบแล้ว"}), 400
+    except Exception as e:
+        conn.close()
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/login", methods=["POST"])
+def login():
+    data = request.get_json() or {}
+    email = (data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
+
+    if not email or not password:
+        return jsonify({"error": "กรุณากรอกอีเมลและรหัสผ่าน"}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE email = ?", (email,))
+    user = cursor.fetchone()
+    conn.close()
+
+    if not user or not check_password_hash(user["password_hash"], password):
+        return jsonify({"error": "อีเมลหรือรหัสผ่านไม่ถูกต้อง"}), 400
+
+    session["user_id"] = user["id"]
+    session["email"] = user["email"]
+    return jsonify({"success": True, "user": {"id": user["id"], "email": user["email"]}})
+
+
+@app.route("/api/logout", methods=["POST"])
+def logout():
+    session.pop("user_id", None)
+    session.pop("email", None)
+    return jsonify({"success": True})
+
+
+@app.route("/api/me", methods=["GET"])
+def me():
+    if "user_id" in session:
+        return jsonify({
+            "logged_in": True,
+            "user": {
+                "id": session["user_id"],
+                "email": session.get("email", "")
+            }
+        })
+    return jsonify({"logged_in": False})
 
 
 @app.route("/upload", methods=["POST"])
@@ -711,6 +921,20 @@ def upload():
         doc.close()
     except Exception as e:
         return jsonify({"error": f"ไม่สามารถเปิดไฟล์ PDF: {e}"}), 400
+
+    # Save translation history to database
+    user_id = session.get("user_id")
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT OR REPLACE INTO translation_history (user_id, job_id, original_filename, file_size, pages) VALUES (?, ?, ?, ?, ?)",
+            (user_id, job_id, file.filename, src_path.stat().st_size, page_count)
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Error saving history to DB: {e}")
 
     with jobs_lock:
         jobs[job_id] = {
@@ -850,65 +1074,68 @@ def preview_original(job_id, page):
 
 @app.route("/history")
 def get_history():
+    user_id = session.get("user_id")
     history_list = []
-    # Find all {job_id}.pdf in OUTPUT_DIR
-    for out_file in OUTPUT_DIR.glob("*.pdf"):
-        job_id = out_file.stem
-        # Find corresponding original file in UPLOAD_DIR
-        matching_uploads = list(UPLOAD_DIR.glob(f"{job_id}_*"))
+    
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    if user_id:
+        cursor.execute("SELECT * FROM translation_history WHERE user_id = ? ORDER BY created_at DESC", (user_id,))
+    else:
+        cursor.execute("SELECT * FROM translation_history WHERE user_id IS NULL ORDER BY created_at DESC LIMIT 20")
         
-        if matching_uploads:
-            orig_path = matching_uploads[0]
-            original_name = orig_path.name[len(job_id)+1:]
-            
-            try:
-                doc = fitz.open(str(out_file))
-                pages = len(doc)
-                doc.close()
-            except:
-                pages = 0
-                
-            stat = out_file.stat()
+    rows = cursor.fetchall()
+    conn.close()
+    
+    for row in rows:
+        job_id = row["job_id"]
+        out_file = OUTPUT_DIR / f"{job_id}.pdf"
+        if out_file.exists():
             history_list.append({
                 "job_id": job_id,
-                "filename": original_name,
-                "created_at": stat.st_mtime,
-                "size": stat.st_size,
-                "pages": pages
+                "filename": row["original_filename"],
+                "created_at": row["created_at"],
+                "size": row["file_size"],
+                "pages": row["pages"]
             })
             
-    # Sort descending by date
-    history_list.sort(key=lambda x: x["created_at"], reverse=True)
     return jsonify({"history": history_list})
 
 @app.route("/delete/<job_id>", methods=["DELETE"])
 def delete_history(job_id):
-    # Security: Ensure job_id is alphanumeric (with underscores/hyphens)
-    import re
     if not re.match(r"^[a-zA-Z0-9_-]+$", job_id):
-        return jsonify({"error": "รูปแบบรหัสงานไม่ถูกต้อง"}), 400
+        return jsonify({"error": "Invalid job_id"}), 400
 
-    deleted_files = 0
+    user_id = session.get("user_id")
     
-    # 1. Delete translated file from OUTPUT_DIR
+    conn = get_db()
+    cursor = conn.cursor()
+    if user_id:
+        cursor.execute("DELETE FROM translation_history WHERE job_id = ? AND user_id = ?", (job_id, user_id))
+    else:
+        cursor.execute("DELETE FROM translation_history WHERE job_id = ? AND user_id IS NULL", (job_id,))
+    conn.commit()
+    conn.close()
+
+    # 1. Delete output PDF
     out_file = OUTPUT_DIR / f"{job_id}.pdf"
     if out_file.exists():
         try:
             out_file.unlink()
-            deleted_files += 1
         except Exception:
             pass
-
-    # 2. Delete original file from UPLOAD_DIR
-    for upload_file in UPLOAD_DIR.glob(f"{job_id}_*"):
+            
+    # 2. Delete matching upload PDF
+    matching_uploads = list(UPLOAD_DIR.glob(f"{job_id}_*"))
+    for f in matching_uploads:
         try:
-            upload_file.unlink()
-            deleted_files += 1
+            f.unlink()
         except Exception:
             pass
 
     # 3. Delete cache JSON if it exists
-    cache_file = CACHE_DIR / f"{job_id}.json"
+    cache_file = CACHE_DIR / f"{job_id}_cache.json"
     if cache_file.exists():
         try:
             cache_file.unlink()

@@ -617,4 +617,172 @@
         });
     }
 
+    // =========================================================================
+    // AUTHENTICATION LOGIC (LOGIN & REGISTER)
+    // =========================================================================
+    let currentUser = null;
+
+    async function checkAuthStatus() {
+        try {
+            const res = await fetch('/api/me');
+            const data = await res.json();
+            if (data.logged_in) {
+                currentUser = data.user;
+                updateAuthUI(true, currentUser.email);
+            } else {
+                currentUser = null;
+                updateAuthUI(false);
+            }
+            fetchHistory();
+        } catch (e) {
+            console.error('Error checking auth status:', e);
+        }
+    }
+
+    function updateAuthUI(isLoggedIn, email = '') {
+        const userDisplayName = document.getElementById('user-display-name');
+        const authBtn = document.getElementById('auth-modal-btn');
+        if (isLoggedIn) {
+            userDisplayName.textContent = email;
+            authBtn.title = "คลิกเพื่อออกจากระบบ (Logout)";
+            authBtn.onclick = handleLogout;
+        } else {
+            userDisplayName.textContent = 'เข้าสู่ระบบ';
+            authBtn.title = "เข้าสู่ระบบ / สมัครสมาชิก";
+            authBtn.onclick = openAuthModal;
+        }
+    }
+
+    window.openAuthModal = function() {
+        document.getElementById('auth-modal').style.display = 'flex';
+        document.getElementById('auth-error-box').style.display = 'none';
+    };
+
+    window.closeAuthModal = function() {
+        document.getElementById('auth-modal').style.display = 'none';
+    };
+
+    window.switchAuthTab = function(tab) {
+        const loginForm = document.getElementById('form-login');
+        const regForm = document.getElementById('form-register');
+        const tabLogin = document.getElementById('tab-login');
+        const tabReg = document.getElementById('tab-register');
+        const errorBox = document.getElementById('auth-error-box');
+
+        errorBox.style.display = 'none';
+
+        if (tab === 'login') {
+            loginForm.style.display = 'block';
+            regForm.style.display = 'none';
+            tabLogin.classList.add('active');
+            tabReg.classList.remove('active');
+        } else {
+            loginForm.style.display = 'none';
+            regForm.style.display = 'block';
+            tabReg.classList.add('active');
+            tabLogin.classList.remove('active');
+        }
+    };
+
+    window.handleLoginSubmit = async function(e) {
+        e.preventDefault();
+        const email = document.getElementById('login-email').value;
+        const password = document.getElementById('login-password').value;
+        const errorBox = document.getElementById('auth-error-box');
+
+        try {
+            const res = await fetch('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+            });
+            const data = await res.json();
+            if (!res.ok || data.error) {
+                errorBox.textContent = data.error || 'การเข้าสู่ระบบล้มเหลว';
+                errorBox.style.display = 'block';
+            } else {
+                currentUser = data.user;
+                updateAuthUI(true, currentUser.email);
+                closeAuthModal();
+                showToast(`ยินดีต้อนรับ ${currentUser.email}`);
+                fetchHistory();
+            }
+        } catch (err) {
+            errorBox.textContent = 'เกิดข้อผิดพลาดในการเชื่อมต่อ';
+            errorBox.style.display = 'block';
+        }
+    };
+
+    window.handleRegisterSubmit = async function(e) {
+        e.preventDefault();
+        const email = document.getElementById('reg-email').value;
+        const password = document.getElementById('reg-password').value;
+        const errorBox = document.getElementById('auth-error-box');
+
+        try {
+            const res = await fetch('/api/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+            });
+            const data = await res.json();
+            if (!res.ok || data.error) {
+                errorBox.textContent = data.error || 'การสมัครสมาชิกล้มเหลว';
+                errorBox.style.display = 'block';
+            } else {
+                currentUser = data.user;
+                updateAuthUI(true, currentUser.email);
+                closeAuthModal();
+                showToast(`สร้างบัญชีสำเร็จ! ยินดีต้อนรับ ${currentUser.email}`);
+                fetchHistory();
+            }
+        } catch (err) {
+            errorBox.textContent = 'เกิดข้อผิดพลาดในการเชื่อมต่อ';
+            errorBox.style.display = 'block';
+        }
+    };
+
+    window.handleGoogleCredentialResponse = async function(response) {
+        const errorBox = document.getElementById('auth-error-box');
+        try {
+            const res = await fetch('/api/google-login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ credential: response.credential })
+            });
+            const data = await res.json();
+            if (!res.ok || data.error) {
+                errorBox.textContent = data.error || 'เข้าสู่ระบบด้วย Google ล้มเหลว';
+                errorBox.style.display = 'block';
+            } else {
+                currentUser = data.user;
+                updateAuthUI(true, currentUser.email);
+                closeAuthModal();
+                showToast(`ยินดีต้อนรับ ${currentUser.email} (Google)`);
+                fetchHistory();
+            }
+        } catch (err) {
+            errorBox.textContent = 'เกิดข้อผิดพลาดในการเข้าสู่ระบบด้วย Google';
+            errorBox.style.display = 'block';
+        }
+    };
+
+    async function handleLogout() {
+        if (!confirm('คุณต้องการออกจากระบบใช่หรือไม่?')) return;
+        try {
+            await fetch('/api/logout', { method: 'POST' });
+            currentUser = null;
+            updateAuthUI(false);
+            showToast('ออกจากระบบเรียบร้อย');
+            fetchHistory();
+        } catch (err) {
+            console.error('Error logging out:', err);
+        }
+    }
+
+
+    // Call checkAuthStatus on startup
+    checkAuthStatus();
+
 })();
+

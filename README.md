@@ -126,21 +126,38 @@ python app.py
 ## 📁 Project Structure
 
 ```
-translate-pdf/
-├── app.py                 # Flask web application
-├── translate_pdf.py       # Standalone translation script
+en-th-pdf-translator/
+├── app.py                 # Main Flask web application
+├── run.bat                # 1-Click launcher for Windows
+├── setup.bat              # Windows setup script
+├── setup.sh               # Linux/macOS setup script
 ├── requirements.txt       # Python dependencies
-├── .gitignore            # Git ignore rules
-├── README.md             # This file
-├── static/               # Frontend assets
-│   ├── style.css         # Styling
-│   └── app.js            # JavaScript
-├── templates/            # HTML templates
-│   └── index.html        # Main UI
-├── uploads/              # Temporary upload storage
-├── output/               # Translated PDF output
-└── cache/                # Translation cache
+├── Dockerfile             # Container configuration for Cloud deployment
+├── .dockerignore          # Docker ignore file
+├── README.md              # Project documentation
+├── LICENSE                # MIT License
+│
+├── docs/                  # Detailed documentation & deployment guides
+│   ├── GETTING_STARTED.md
+│   └── DEPLOY_TO_GITHUB.md
+│
+├── examples/              # Sample PDF files for testing
+├── scripts/               # Helper & development scripts
+│   ├── debug.py
+│   ├── extract.py
+│   ├── test_extract.py
+│   └── translate_pdf.py
+├── design/                # Prototype HTML/CSS designs
+├── static/                # Web frontend static assets
+│   ├── style.css
+│   └── app.js
+├── templates/             # HTML templates
+│   └── index.html
+├── uploads/               # Temporary file upload directory
+├── output/                # Generated translated PDFs
+└── cache/                 # Translation JSON cache
 ```
+
 
 ## 🔧 Configuration
 

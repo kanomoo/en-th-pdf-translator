@@ -1,4 +1,5 @@
 import fitz
+
 doc = fitz.open('uploads/d949d69f7b5d_Ch1_Introduction.pdf')
 items = []
 for page_number, page in enumerate(doc):
