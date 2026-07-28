@@ -65,6 +65,11 @@ FONT_REG = _find_font([
     "/usr/share/fonts/noto/NotoSansThai-Regular.ttf",
     "/usr/share/fonts/truetype/noto/NotoSansThai-Regular.ttf",
     "/usr/share/fonts/google-noto/NotoSansThai-Regular.ttf",
+    # Linux — Thai TLWG fonts
+    "/usr/share/fonts/truetype/tlwg/Waree.ttf",
+    "/usr/share/fonts/truetype/tlwg/Loma.ttf",
+    "/usr/share/fonts/truetype/tlwg/Garuda.ttf",
+    "/usr/share/fonts/truetype/tlwg/Kinnari.ttf",
     # Linux — Noto Sans Thai Looped
     "/usr/share/fonts/noto/NotoSansThaiLooped-Regular.ttf",
     # Linux — Droid Sans Thai
@@ -79,10 +84,14 @@ FONT_BOLD = _find_font([
     "/usr/share/fonts/noto/NotoSansThai-Bold.ttf",
     "/usr/share/fonts/truetype/noto/NotoSansThai-Bold.ttf",
     "/usr/share/fonts/google-noto/NotoSansThai-Bold.ttf",
+    "/usr/share/fonts/truetype/tlwg/Waree-Bold.ttf",
+    "/usr/share/fonts/truetype/tlwg/Loma-Bold.ttf",
+    "/usr/share/fonts/truetype/tlwg/Garuda-Bold.ttf",
     "/usr/share/fonts/noto/NotoSansThaiLooped-Bold.ttf",
     "C:/Windows/Fonts/LeelaUIb.ttf",
     "/Library/Fonts/Thonburi Bold.ttf",
 ])
+
 
 if not FONT_REG:
     print("⚠️  WARNING: No Thai font found. Install noto-fonts-extra or similar.")
