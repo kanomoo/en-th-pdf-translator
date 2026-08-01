@@ -235,8 +235,9 @@ Edit `/templates/index.html` to change interface text and styling.
 - **No API Key Required** — Uses free Google Translate API (community-supported)
 - **Rate Limiting** — May encounter rate limiting on large batches; the app retries automatically
 - **Font Availability** — If Thai fonts aren't found, the app will warn you and use system fallback
-- **Cache Files** — Translation cache is stored locally in the `cache/` directory
-- **Temporary Files** — Uploaded and translated files are stored in `uploads/` and `output/` directories
+- **Persistent storage on Render** — Set `DATA_DIR` to a mounted persistent disk (for example `/var/data`). The database, projects, uploads, translated PDFs, and cache are stored there. Without a persistent disk, Render can reset local files when the service restarts, so folders may disappear even when the same account signs in.
+- **Cache Files** — Translation cache is stored in the `cache/` directory under `DATA_DIR`
+- **Temporary Files** — Uploaded and translated files are stored in `uploads/` and `output/` under `DATA_DIR`
 
 ## 🐛 Troubleshooting
 

@@ -44,7 +44,13 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "pdf-translator-secret-key-2026")
 
 BASE_DIR = Path(__file__).resolve().parent
-DB_PATH = BASE_DIR / "database.db"
+# Render's local filesystem is ephemeral. Set DATA_DIR to a mounted persistent
+# disk (Render commonly exposes it as /var/data) so accounts and translations
+# survive restarts and deploys.
+_storage_root = os.environ.get("DATA_DIR") or os.environ.get("RENDER_DISK_MOUNT_PATH")
+DATA_DIR = Path(_storage_root).expanduser() if _storage_root else BASE_DIR
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+DB_PATH = DATA_DIR / "database.db"
 
 def init_db():
     conn = sqlite3.connect(str(DB_PATH))
@@ -145,9 +151,9 @@ def get_or_create_project(cursor, user_id, project_id=None, project_name=None):
 def default_project_name():
     return time.strftime("New Folder %Y-%m-%d %H:%M")
 
-UPLOAD_DIR = BASE_DIR / "uploads"
-OUTPUT_DIR = BASE_DIR / "output"
-CACHE_DIR = BASE_DIR / "cache"
+UPLOAD_DIR = DATA_DIR / "uploads"
+OUTPUT_DIR = DATA_DIR / "output"
+CACHE_DIR = DATA_DIR / "cache"
 DOCS_DIR = BASE_DIR / "docs"
 
 SCRIPTS_DIR = BASE_DIR / "scripts"
