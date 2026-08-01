@@ -61,14 +61,30 @@ def init_db():
         CREATE TABLE IF NOT EXISTS translation_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER,
+            project_id INTEGER,
             job_id TEXT UNIQUE NOT NULL,
             original_filename TEXT NOT NULL,
             file_size INTEGER DEFAULT 0,
             pages INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS projects (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            name TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    """)
+    cursor.execute("PRAGMA table_info(translation_history)")
+    existing_columns = {row[1] for row in cursor.fetchall()}
+    if "project_id" not in existing_columns:
+        cursor.execute("ALTER TABLE translation_history ADD COLUMN project_id INTEGER")
     conn.commit()
     conn.close()
 
@@ -78,6 +94,56 @@ def get_db():
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def _request_owner_clause(user_id, column="user_id"):
+    if user_id:
+        return f"{column} = ?", (user_id,)
+    return f"{column} IS NULL", ()
+
+
+def _get_owned_project(cursor, project_id, user_id):
+    owner_clause, owner_params = _request_owner_clause(user_id)
+    cursor.execute(
+        f"SELECT id, name FROM projects WHERE id = ? AND {owner_clause}",
+        (project_id, *owner_params),
+    )
+    return cursor.fetchone()
+
+
+def get_or_create_project(cursor, user_id, project_id=None, project_name=None):
+    owner_clause, owner_params = _request_owner_clause(user_id)
+
+    if project_id:
+        cursor.execute(
+            f"SELECT id, name FROM projects WHERE id = ? AND {owner_clause}",
+            (project_id, *owner_params),
+        )
+        row = cursor.fetchone()
+        if row:
+            return row["id"], row["name"]
+
+    name = (project_name or "").strip()
+    if not name:
+        name = time.strftime("Uploads %Y-%m-%d %H:%M")
+
+    cursor.execute(
+        f"SELECT id, name FROM projects WHERE name = ? AND {owner_clause}",
+        (name, *owner_params),
+    )
+    row = cursor.fetchone()
+    if row:
+        return row["id"], row["name"]
+
+    cursor.execute(
+        "INSERT INTO projects (user_id, name) VALUES (?, ?)",
+        (user_id, name),
+    )
+    return cursor.lastrowid, name
+
+
+def default_project_name():
+    return time.strftime("New Folder %Y-%m-%d %H:%M")
 
 UPLOAD_DIR = BASE_DIR / "uploads"
 OUTPUT_DIR = BASE_DIR / "output"
@@ -561,7 +627,7 @@ def emit(job_id, event_type, data):
 def run_translation(job_id, src_path, parsing_mode="auto"):
     """Full translation pipeline with progress events."""
     try:
-        emit(job_id, "stage", {"stage": "extracting", "message": "กำลังอ่านไฟล์ PDF..."})
+        emit(job_id, "stage", {"stage": "extracting", "message": "Reading PDF..."})
 
         doc = fitz.open(str(src_path))
         total_pages = len(doc)
@@ -569,7 +635,7 @@ def run_translation(job_id, src_path, parsing_mode="auto"):
 
         # Extract text blocks
         items = extract_items(doc, parsing_mode)
-        emit(job_id, "stage", {"stage": "translating", "message": f"พบ {len(items)} ข้อความ กำลังแปล..."})
+        emit(job_id, "stage", {"stage": "translating", "message": f"Found {len(items)} text blocks. Translating..."})
 
         # Load/build cache
         cache_path = CACHE_DIR / f"{job_id}_cache.json"
@@ -644,7 +710,7 @@ def run_translation(job_id, src_path, parsing_mode="auto"):
             cache_path.write_text(json.dumps(cache, ensure_ascii=False, indent=2), encoding="utf-8")
 
         # Build PDF
-        emit(job_id, "stage", {"stage": "building", "message": "กำลังสร้าง PDF ภาษาไทย..."})
+        emit(job_id, "stage", {"stage": "building", "message": "Building Thai PDF..."})
 
         # Remove original text
         by_page = {}
@@ -737,7 +803,7 @@ def run_translation(job_id, src_path, parsing_mode="auto"):
             jobs[job_id]["total_pages"] = total_pages
 
         emit(job_id, "complete", {
-            "message": "แปลเสร็จสมบูรณ์!",
+            "message": "Translation complete.",
             "filename": src_path.stem + "_TH.pdf",
             "pages": total_pages,
             "shrunk": shrunk,
@@ -785,15 +851,15 @@ def google_login():
     token = data.get("credential") or ""
 
     if not token:
-        return jsonify({"error": "ไม่พบข้อมูล Token จาก Google"}), 400
+        return jsonify({"error": "Missing Google token"}), 400
 
     payload = decode_google_id_token(token)
     if not payload:
-        return jsonify({"error": "Token จาก Google ไม่ถูกต้อง"}), 400
+        return jsonify({"error": "Invalid Google token"}), 400
 
     email = (payload.get("email") or "").strip().lower()
     if not email or "@" not in email:
-        return jsonify({"error": "ไม่สามารถดึงอีเมลจากบัญชี Google ได้"}), 400
+        return jsonify({"error": "Could not read email from Google account"}), 400
 
     conn = get_db()
     cursor = conn.cursor()
@@ -831,9 +897,9 @@ def register():
     password = data.get("password") or ""
 
     if not email or "@" not in email:
-        return jsonify({"error": "กรุณากรอกอีเมลให้ถูกต้อง"}), 400
+        return jsonify({"error": "Enter a valid email"}), 400
     if len(password) < 6:
-        return jsonify({"error": "รหัสผ่านต้องมีความยาวอย่างน้อย 6 ตัวอักษร"}), 400
+        return jsonify({"error": "Password must be at least 6 characters"}), 400
 
     conn = get_db()
     cursor = conn.cursor()
@@ -849,7 +915,7 @@ def register():
         return jsonify({"success": True, "user": {"id": user_id, "email": email}})
     except sqlite3.IntegrityError:
         conn.close()
-        return jsonify({"error": "อีเมลนี้ถูกใช้งานในระบบแล้ว"}), 400
+        return jsonify({"error": "This email is already registered"}), 400
     except Exception as e:
         conn.close()
         return jsonify({"error": str(e)}), 500
@@ -862,7 +928,7 @@ def login():
     password = data.get("password") or ""
 
     if not email or not password:
-        return jsonify({"error": "กรุณากรอกอีเมลและรหัสผ่าน"}), 400
+        return jsonify({"error": "Email and password are required"}), 400
 
     conn = get_db()
     cursor = conn.cursor()
@@ -871,7 +937,7 @@ def login():
     conn.close()
 
     if not user or not check_password_hash(user["password_hash"], password):
-        return jsonify({"error": "อีเมลหรือรหัสผ่านไม่ถูกต้อง"}), 400
+        return jsonify({"error": "Invalid email or password"}), 400
 
     session["user_id"] = user["id"]
     session["email"] = user["email"]
@@ -901,11 +967,11 @@ def me():
 @app.route("/upload", methods=["POST"])
 def upload():
     if "file" not in request.files:
-        return jsonify({"error": "ไม่พบไฟล์"}), 400
+        return jsonify({"error": "No file found"}), 400
 
     file = request.files["file"]
     if not file.filename or not file.filename.lower().endswith(".pdf"):
-        return jsonify({"error": "กรุณาอัปโหลดไฟล์ PDF เท่านั้น"}), 400
+        return jsonify({"error": "Please upload PDF files only"}), 400
 
     job_id = uuid.uuid4().hex[:12]
     safe_name = re.sub(r'[^\w\-.]', '_', file.filename)
@@ -913,6 +979,12 @@ def upload():
     file.save(str(src_path))
     
     parsing_mode = request.form.get("parsing_mode", "auto")
+    project_id = request.form.get("project_id")
+    project_name = request.form.get("project_name")
+    try:
+        project_id = int(project_id) if project_id else None
+    except ValueError:
+        project_id = None
 
     # Get page count
     try:
@@ -920,19 +992,35 @@ def upload():
         page_count = len(doc)
         doc.close()
     except Exception as e:
-        return jsonify({"error": f"ไม่สามารถเปิดไฟล์ PDF: {e}"}), 400
+        return jsonify({"error": f"Could not open PDF: {e}"}), 400
 
     # Save translation history to database
     user_id = session.get("user_id")
+    project = {"id": None, "name": ""}
     try:
         conn = get_db()
         cursor = conn.cursor()
+        resolved_project_id, resolved_project_name = get_or_create_project(
+            cursor,
+            user_id,
+            project_id=project_id,
+            project_name=project_name,
+        )
         cursor.execute(
-            "INSERT OR REPLACE INTO translation_history (user_id, job_id, original_filename, file_size, pages) VALUES (?, ?, ?, ?, ?)",
-            (user_id, job_id, file.filename, src_path.stat().st_size, page_count)
+            """
+            INSERT OR REPLACE INTO translation_history
+                (user_id, project_id, job_id, original_filename, file_size, pages)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (user_id, resolved_project_id, job_id, file.filename, src_path.stat().st_size, page_count)
+        )
+        cursor.execute(
+            "UPDATE projects SET updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (resolved_project_id,)
         )
         conn.commit()
         conn.close()
+        project = {"id": resolved_project_id, "name": resolved_project_name}
     except Exception as e:
         print(f"Error saving history to DB: {e}")
 
@@ -954,6 +1042,7 @@ def upload():
         "job_id": job_id,
         "filename": file.filename,
         "pages": page_count,
+        "project": project,
     })
 
 
@@ -995,7 +1084,7 @@ def download(job_id, filename):
     out_path = OUTPUT_DIR / f"{job_id}.pdf"
     if not job or job.get("status") != "complete":
         if not out_path.exists():
-            return jsonify({"error": "ไฟล์ยังไม่พร้อม หรือไม่พบไฟล์"}), 404
+            return jsonify({"error": "File is not ready or was not found"}), 404
 
     return send_file(
         str(out_path),
@@ -1010,7 +1099,7 @@ def download_original(job_id):
     """Serve the original PDF file."""
     matching_uploads = list(UPLOAD_DIR.glob(f"{job_id}_*"))
     if not matching_uploads:
-        return jsonify({"error": "ไม่พบไฟล์ต้นฉบับ"}), 404
+        return jsonify({"error": "Original file not found"}), 404
         
     orig_path = matching_uploads[0]
     return send_file(
@@ -1030,12 +1119,12 @@ def preview(job_id, page):
     out_path = OUTPUT_DIR / f"{job_id}.pdf"
     if not job or job.get("status") != "complete":
         if not out_path.exists():
-            return jsonify({"error": "ยังไม่เสร็จ หรือไม่พบไฟล์"}), 404
+            return jsonify({"error": "File is not ready or was not found"}), 404
 
     doc = fitz.open(str(out_path))
     if page < 0 or page >= len(doc):
         doc.close()
-        return jsonify({"error": "หน้าไม่ถูกต้อง"}), 404
+        return jsonify({"error": "Invalid page"}), 404
 
     pix = doc[page].get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
     img_bytes = pix.tobytes("png")
@@ -1052,7 +1141,7 @@ def preview_original(job_id, page):
     # Find original file in UPLOAD_DIR
     matching_uploads = list(UPLOAD_DIR.glob(f"{job_id}_*"))
     if not matching_uploads:
-        return jsonify({"error": "ไม่พบไฟล์ต้นฉบับ"}), 404
+        return jsonify({"error": "Original file not found"}), 404
         
     orig_path = matching_uploads[0]
 
@@ -1060,7 +1149,7 @@ def preview_original(job_id, page):
         doc = fitz.open(str(orig_path))
         if page < 0 or page >= len(doc):
             doc.close()
-            return jsonify({"error": "หน้าไม่ถูกต้อง"}), 404
+            return jsonify({"error": "Invalid page"}), 404
 
         pix = doc[page].get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
         img_bytes = pix.tobytes("png")
@@ -1076,17 +1165,59 @@ def preview_original(job_id, page):
 def get_history():
     user_id = session.get("user_id")
     history_list = []
+    projects_map = {}
     
     conn = get_db()
     cursor = conn.cursor()
     
     if user_id:
-        cursor.execute("SELECT * FROM translation_history WHERE user_id = ? ORDER BY created_at DESC", (user_id,))
+        cursor.execute(
+            """
+            SELECT
+                h.*,
+                COALESCE(p.name, 'Unfiled') AS project_name,
+                p.created_at AS project_created_at,
+                p.updated_at AS project_updated_at
+            FROM translation_history h
+            LEFT JOIN projects p ON p.id = h.project_id
+            WHERE h.user_id = ?
+            ORDER BY COALESCE(p.updated_at, h.created_at) DESC, h.created_at DESC
+            """,
+            (user_id,),
+        )
     else:
-        cursor.execute("SELECT * FROM translation_history WHERE user_id IS NULL ORDER BY created_at DESC LIMIT 20")
+        cursor.execute(
+            """
+            SELECT
+                h.*,
+                COALESCE(p.name, 'Unfiled') AS project_name,
+                p.created_at AS project_created_at,
+                p.updated_at AS project_updated_at
+            FROM translation_history h
+            LEFT JOIN projects p ON p.id = h.project_id
+            WHERE h.user_id IS NULL
+            ORDER BY COALESCE(p.updated_at, h.created_at) DESC, h.created_at DESC
+            LIMIT 80
+            """
+        )
         
     rows = cursor.fetchall()
+    owner_clause, owner_params = _request_owner_clause(user_id, "user_id")
+    cursor.execute(
+        f"SELECT id, name, created_at, updated_at FROM projects WHERE {owner_clause} ORDER BY updated_at DESC",
+        owner_params,
+    )
+    project_rows = cursor.fetchall()
     conn.close()
+
+    for row in project_rows:
+        projects_map[row["id"]] = {
+            "id": row["id"],
+            "name": row["name"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+            "files": [],
+        }
     
     for row in rows:
         job_id = row["job_id"]
@@ -1097,44 +1228,161 @@ def get_history():
                 "filename": row["original_filename"],
                 "created_at": row["created_at"],
                 "size": row["file_size"],
-                "pages": row["pages"]
+                "pages": row["pages"],
+                "project_id": row["project_id"],
+                "project_name": row["project_name"],
             })
+            project_key = row["project_id"] or "unfiled"
+            if project_key not in projects_map:
+                projects_map[project_key] = {
+                    "id": row["project_id"],
+                    "name": row["project_name"],
+                    "created_at": row["project_created_at"] or row["created_at"],
+                    "updated_at": row["project_updated_at"] or row["created_at"],
+                    "files": [],
+                }
+            projects_map[project_key]["files"].append(history_list[-1])
             
-    return jsonify({"history": history_list})
+    projects_list = sorted(
+        projects_map.values(),
+        key=lambda item: item.get("updated_at") or item.get("created_at") or "",
+        reverse=True,
+    )
+    response = jsonify({"history": history_list, "projects": projects_list})
+    response.headers["Cache-Control"] = "no-store, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    return response
 
-@app.route("/delete/<job_id>", methods=["DELETE"])
-def delete_history(job_id):
+
+@app.route("/projects", methods=["GET", "POST"])
+def projects():
+    user_id = session.get("user_id")
+
+    if request.method == "POST":
+        data = request.get_json() or {}
+        name = (data.get("name") or "").strip() or default_project_name()
+        if not name:
+            return jsonify({"error": "Folder name is required"}), 400
+
+        conn = get_db()
+        cursor = conn.cursor()
+        project_id, project_name = get_or_create_project(cursor, user_id, project_name=name)
+        cursor.execute("UPDATE projects SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", (project_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({"project": {"id": project_id, "name": project_name}})
+
+    owner_clause, owner_params = _request_owner_clause(user_id, "p.user_id")
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute(
+        f"""
+        SELECT
+            p.id,
+            p.name,
+            p.created_at,
+            p.updated_at,
+            COUNT(h.id) AS file_count,
+            COALESCE(SUM(h.pages), 0) AS page_count
+        FROM projects p
+        LEFT JOIN translation_history h ON h.project_id = p.id
+        WHERE {owner_clause}
+        GROUP BY p.id
+        ORDER BY p.updated_at DESC
+        """,
+        owner_params,
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return jsonify({"projects": [dict(row) for row in rows]})
+
+
+@app.route("/projects/<int:project_id>", methods=["PATCH"])
+def rename_project(project_id):
+    user_id = session.get("user_id")
+    data = request.get_json() or {}
+    name = (data.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "Folder name is required"}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+    if not _get_owned_project(cursor, project_id, user_id):
+        conn.close()
+        return jsonify({"error": "Folder not found"}), 404
+
+    cursor.execute(
+        "UPDATE projects SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        (name, project_id),
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True, "project": {"id": project_id, "name": name}})
+
+
+@app.route("/files/<job_id>/move", methods=["PATCH"])
+def move_file(job_id):
     if not re.match(r"^[a-zA-Z0-9_-]+$", job_id):
         return jsonify({"error": "Invalid job_id"}), 400
 
     user_id = session.get("user_id")
-    
+    data = request.get_json() or {}
+    project_id = data.get("project_id")
+
+    try:
+        project_id = int(project_id)
+    except (TypeError, ValueError):
+        return jsonify({"error": "Target folder is required"}), 400
+
     conn = get_db()
     cursor = conn.cursor()
-    if user_id:
-        cursor.execute("DELETE FROM translation_history WHERE job_id = ? AND user_id = ?", (job_id, user_id))
-    else:
-        cursor.execute("DELETE FROM translation_history WHERE job_id = ? AND user_id IS NULL", (job_id,))
+    target_project = _get_owned_project(cursor, project_id, user_id)
+    if not target_project:
+        conn.close()
+        return jsonify({"error": "Target folder not found"}), 404
+
+    owner_clause, owner_params = _request_owner_clause(user_id)
+    cursor.execute(
+        f"""
+        UPDATE translation_history
+        SET project_id = ?
+        WHERE job_id = ? AND {owner_clause}
+        """,
+        (project_id, job_id, *owner_params),
+    )
+    moved = cursor.rowcount
+    if moved:
+        cursor.execute(
+            "UPDATE projects SET updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (project_id,),
+        )
     conn.commit()
     conn.close()
 
-    # 1. Delete output PDF
+    if not moved:
+        return jsonify({"error": "File not found"}), 404
+    return jsonify({"success": True, "project": dict(target_project)})
+
+
+def delete_translation_files(job_id):
+    deleted_files = 0
+
     out_file = OUTPUT_DIR / f"{job_id}.pdf"
     if out_file.exists():
         try:
             out_file.unlink()
+            deleted_files += 1
         except Exception:
             pass
-            
-    # 2. Delete matching upload PDF
+
     matching_uploads = list(UPLOAD_DIR.glob(f"{job_id}_*"))
     for f in matching_uploads:
         try:
             f.unlink()
+            deleted_files += 1
         except Exception:
             pass
 
-    # 3. Delete cache JSON if it exists
     cache_file = CACHE_DIR / f"{job_id}_cache.json"
     if cache_file.exists():
         try:
@@ -1142,16 +1390,85 @@ def delete_history(job_id):
             deleted_files += 1
         except Exception:
             pass
-            
-    # Remove from active jobs if somehow still there
+
     with jobs_lock:
         if job_id in jobs:
             del jobs[job_id]
 
-    if deleted_files == 0:
-        return jsonify({"error": "ไม่พบประวัติการแปลดังกล่าว"}), 404
+    return deleted_files
+
+
+@app.route("/projects/<int:project_id>", methods=["DELETE"])
+def delete_project(project_id):
+    user_id = session.get("user_id")
+    mode = request.args.get("mode", "keep_files")
+    if mode not in ("keep_files", "delete_files"):
+        return jsonify({"error": "Invalid delete mode"}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+    if not _get_owned_project(cursor, project_id, user_id):
+        conn.close()
+        return jsonify({"error": "Folder not found"}), 404
+
+    owner_clause, owner_params = _request_owner_clause(user_id, "user_id")
+    cursor.execute(
+        f"SELECT job_id FROM translation_history WHERE project_id = ? AND {owner_clause}",
+        (project_id, *owner_params),
+    )
+    job_ids = [row["job_id"] for row in cursor.fetchall()]
+
+    if mode == "delete_files":
+        cursor.execute(
+            f"DELETE FROM translation_history WHERE project_id = ? AND {owner_clause}",
+            (project_id, *owner_params),
+        )
+    else:
+        cursor.execute(
+            f"UPDATE translation_history SET project_id = NULL WHERE project_id = ? AND {owner_clause}",
+            (project_id, *owner_params),
+        )
+
+    cursor.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+    conn.commit()
+    conn.close()
+
+    deleted_files = 0
+    if mode == "delete_files":
+        for job_id in job_ids:
+            deleted_files += delete_translation_files(job_id)
+
+    return jsonify({
+        "success": True,
+        "mode": mode,
+        "affected_files": len(job_ids),
+        "deleted_files": deleted_files,
+    })
+
+
+@app.route("/delete/<job_id>", methods=["DELETE"])
+def delete_history(job_id):
+    if not re.match(r"^[a-zA-Z0-9_-]+$", job_id):
+        return jsonify({"error": "Invalid job_id"}), 400
+
+    user_id = session.get("user_id")
+
+    conn = get_db()
+    cursor = conn.cursor()
+    if user_id:
+        cursor.execute("DELETE FROM translation_history WHERE job_id = ? AND user_id = ?", (job_id, user_id))
+    else:
+        cursor.execute("DELETE FROM translation_history WHERE job_id = ? AND user_id IS NULL", (job_id,))
+    deleted_rows = cursor.rowcount
+    conn.commit()
+    conn.close()
+
+    deleted_files = delete_translation_files(job_id)
+
+    if deleted_rows == 0 and deleted_files == 0:
+        return jsonify({"error": "Translation record not found"}), 404
         
-    return jsonify({"success": True, "message": "ลบประวัติสำเร็จ"})
+    return jsonify({"success": True, "message": "Translation record deleted"})
 
 
 # ---------------------------------------------------------------------------

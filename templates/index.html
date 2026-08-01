@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="th">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -30,16 +30,21 @@
         </div>
       </div>
 
-      <button class="new-btn" id="new-doc-btn" data-od-id="new-document-button" onclick="resetToUpload()">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        New Document
-      </button>
+      <div class="explorer-toolbar" aria-label="File explorer actions">
+        <button class="explorer-primary-btn" id="new-file-btn" type="button" onclick="openFilePicker()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="12" x2="12" y2="18"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+          New File
+        </button>
+        <button class="explorer-icon-btn" id="new-folder-btn" type="button" onclick="createFolder()" title="New folder" aria-label="New folder">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><line x1="12" y1="10" x2="12" y2="16"/><line x1="9" y1="13" x2="15" y2="13"/></svg>
+        </button>
+      </div>
 
       <div class="history-section" id="history-scroller" data-od-id="history-list">
-        <div class="history-group-title">Documents History</div>
+        <div class="history-group-title">Projects</div>
         
         <div class="history-group" id="history-group-container">
-            <div class="history-loading" style="font-size: 12px; padding: 10px; color: var(--fg-muted);">กำลังโหลด...</div>
+            <div class="history-loading" style="font-size: 12px; padding: 10px; color: var(--fg-muted);">Loading...</div>
         </div>
       </div>
       
@@ -87,7 +92,7 @@
           <div class="auth-btn-container" id="auth-btn-wrapper">
             <button id="auth-modal-btn" onclick="openAuthModal()" class="btn-primary" style="background: var(--surface-card); color: var(--fg); border: 1px solid var(--border);">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-              <span id="user-display-name">เข้าสู่ระบบ</span>
+              <span id="user-display-name">Sign in</span>
             </button>
           </div>
         </div>
@@ -103,14 +108,14 @@
             <div class="upload-icon-wrapper" style="position: relative; z-index: 2;">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             </div>
-            <h2 class="upload-title" style="position: relative; z-index: 2;">Drop your English PDF document here</h2>
-            <p class="upload-desc" style="position: relative; z-index: 2;">Or click to select a file from your device files.</p>
-            <div class="file-limits" style="position: relative; z-index: 2;">• EN &rarr; TH TRANSLATION</div>
-            <input type="file" id="file-input" accept=".pdf" hidden>
+            <h2 class="upload-title" style="position: relative; z-index: 2;">Drop PDFs here</h2>
+            <p class="upload-desc" id="upload-folder-hint" style="position: relative; z-index: 2;">Choose a folder on the left, or upload to a new folder automatically.</p>
+            <div class="file-limits" style="position: relative; z-index: 2;">EN &rarr; TH translation • up to 100 MB per file</div>
+            <input type="file" id="file-input" accept=".pdf" multiple hidden>
           </div>
           
           <div class="parsing-mode-container glow-card-target">
-            <h3 class="parsing-mode-title">Select Document Layout Type</h3>
+            <h3 class="parsing-mode-title">Document Layout</h3>
             <p class="parsing-mode-desc">Help the AI understand your document layout for better translation formatting.</p>
             
             <div class="parsing-mode-options">
@@ -166,15 +171,16 @@
               <div class="progress-bar-fill" id="progress-bar"></div>
             </div>
             <div id="progress-detail" style="text-align: center; margin-top: 15px; font-size: 12px; color: var(--fg-muted);"></div>
+            <div class="batch-queue" id="batch-queue" style="display: none;"></div>
           </div>
         </div>
 
         <!-- STATE 3: WORKSPACE SPLIT PANES (Translation PDF view) -->
         <div class="state-workspace" id="split-screen" style="display: none;">
           <div class="mobile-view-switcher">
-            <button class="mobile-tab-btn active" data-view="both" onclick="setMobileView('both')">ทั้ง 2 ภาษา</button>
+            <button class="mobile-tab-btn active" data-view="both" onclick="setMobileView('both')">Both</button>
             <button class="mobile-tab-btn" data-view="en" onclick="setMobileView('en')">English</button>
-            <button class="mobile-tab-btn" data-view="th" onclick="setMobileView('th')">ไทย (แปล)</button>
+            <button class="mobile-tab-btn" data-view="th" onclick="setMobileView('th')">Thai</button>
           </div>
           <div class="split-pane-container">
             
@@ -250,8 +256,8 @@
       <button class="auth-modal-close" onclick="closeAuthModal()">&times;</button>
       
       <div class="auth-tabs">
-        <button class="auth-tab active" id="tab-login" onclick="switchAuthTab('login')">เข้าสู่ระบบ</button>
-        <button class="auth-tab" id="tab-register" onclick="switchAuthTab('register')">สมัครสมาชิก</button>
+        <button class="auth-tab active" id="tab-login" onclick="switchAuthTab('login')">Sign in</button>
+        <button class="auth-tab" id="tab-register" onclick="switchAuthTab('register')">Create account</button>
       </div>
 
       <div class="auth-error-msg" id="auth-error-box" style="display: none;"></div>
@@ -274,38 +280,37 @@
         </div>
       </div>
 
-      <div class="auth-divider"><span>หรือ</span></div>
+      <div class="auth-divider"><span>or</span></div>
 
 
       <!-- LOGIN FORM -->
       <form id="form-login" onsubmit="handleLoginSubmit(event)">
         <div class="auth-input-group">
-          <label>อีเมล (Email)</label>
+          <label>Email</label>
           <input type="email" id="login-email" required placeholder="name@example.com">
         </div>
         <div class="auth-input-group">
-          <label>รหัสผ่าน (Password)</label>
+          <label>Password</label>
           <input type="password" id="login-password" required placeholder="••••••••">
         </div>
-        <button type="submit" class="auth-submit-btn">เข้าสู่ระบบ</button>
+        <button type="submit" class="auth-submit-btn">Sign in</button>
       </form>
 
       <!-- REGISTER FORM -->
       <form id="form-register" onsubmit="handleRegisterSubmit(event)" style="display: none;">
         <div class="auth-input-group">
-          <label>อีเมล (Email)</label>
+          <label>Email</label>
           <input type="email" id="reg-email" required placeholder="name@example.com">
         </div>
         <div class="auth-input-group">
-          <label>รหัสผ่าน (อย่างน้อย 6 ตัวอักษร)</label>
+          <label>Password (at least 6 characters)</label>
           <input type="password" id="reg-password" required minlength="6" placeholder="••••••••">
         </div>
-        <button type="submit" class="auth-submit-btn">สร้างบัญชีผู้ใช้</button>
+        <button type="submit" class="auth-submit-btn">Create account</button>
       </form>
     </div>
   </div>
 
-  <script src="{{ url_for('static', filename='app.js') }}?v=4"></script>
+  <script src="{{ url_for('static', filename='app.js') }}?v=9"></script>
 </body>
 </html>
-
