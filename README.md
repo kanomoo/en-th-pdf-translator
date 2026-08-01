@@ -236,8 +236,16 @@ Edit `/templates/index.html` to change interface text and styling.
 - **Rate Limiting** — May encounter rate limiting on large batches; the app retries automatically
 - **Font Availability** — If Thai fonts aren't found, the app will warn you and use system fallback
 - **Persistent storage on Render** — Set `DATA_DIR` to a mounted persistent disk (for example `/var/data`). The database, projects, uploads, translated PDFs, and cache are stored there. Without a persistent disk, Render can reset local files when the service restarts, so folders may disappear even when the same account signs in.
+- **Recommended production database** — Create a Neon Postgres database and add its pooled connection string as the Render environment variable `DATABASE_URL`. When present, the app stores users, folders, and translation history in Postgres instead of local SQLite, so the data survives Render restarts without a Render disk.
 - **Cache Files** — Translation cache is stored in the `cache/` directory under `DATA_DIR`
 - **Temporary Files** — Uploaded and translated files are stored in `uploads/` and `output/` under `DATA_DIR`
+
+### Neon Postgres on Render
+
+1. Create a project at [Neon](https://neon.tech/) and copy its pooled Postgres connection string.
+2. Open the Render service and go to **Environment**.
+3. Add `DATABASE_URL` with the Neon connection string as its value.
+4. Choose **Save, rebuild, and deploy**. The app creates its tables automatically on startup.
 
 ## 🐛 Troubleshooting
 

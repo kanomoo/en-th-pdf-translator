@@ -22,6 +22,15 @@ from pathlib import Path
 import sqlite3
 from werkzeug.security import generate_password_hash, check_password_hash
 
+try:
+    import psycopg
+    from psycopg.rows import dict_row
+except ImportError:  # Optional locally; required when DATABASE_URL is configured.
+    psycopg = None
+    dict_row = None
+
+POSTGRES_INTEGRITY_ERROR = psycopg.IntegrityError if psycopg else type(None)
+
 # pyrefly: ignore [missing-import]
 import fitz
 # pyrefly: ignore [missing-import]
@@ -44,6 +53,10 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "pdf-translator-secret-key-2026")
 
 BASE_DIR = Path(__file__).resolve().parent
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+if DATABASE_URL and psycopg is None:
+    raise RuntimeError("DATABASE_URL is set but psycopg is not installed")
+
 # Render's local filesystem is ephemeral. Set DATA_DIR to a mounted persistent
 # disk (Render commonly exposes it as /var/data) so accounts and translations
 # survive restarts and deploys.
@@ -53,6 +66,43 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / "database.db"
 
 def init_db():
+    if DATABASE_URL:
+        conn = psycopg.connect(DATABASE_URL)
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id BIGSERIAL PRIMARY KEY,
+                email TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS projects (
+                id BIGSERIAL PRIMARY KEY,
+                user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
+                name TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS translation_history (
+                id BIGSERIAL PRIMARY KEY,
+                user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
+                project_id BIGINT REFERENCES projects(id) ON DELETE SET NULL,
+                job_id TEXT UNIQUE NOT NULL,
+                original_filename TEXT NOT NULL,
+                file_size BIGINT DEFAULT 0,
+                pages INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("ALTER TABLE translation_history ADD COLUMN IF NOT EXISTS project_id BIGINT")
+        conn.commit()
+        conn.close()
+        return
+
     conn = sqlite3.connect(str(DB_PATH))
     cursor = conn.cursor()
     cursor.execute("""
@@ -97,9 +147,41 @@ def init_db():
 init_db()
 
 def get_db():
+    if DATABASE_URL:
+        return PostgresConnection(psycopg.connect(DATABASE_URL, row_factory=dict_row))
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
     return conn
+
+
+class PostgresCursor:
+    def __init__(self, cursor):
+        self._cursor = cursor
+
+    def execute(self, query, params=()):
+        return self._cursor.execute(query.replace("?", "%s"), params)
+
+    def __getattr__(self, name):
+        return getattr(self._cursor, name)
+
+
+class PostgresConnection:
+    def __init__(self, connection):
+        self._connection = connection
+
+    def cursor(self):
+        return PostgresCursor(self._connection.cursor())
+
+    def __getattr__(self, name):
+        return getattr(self._connection, name)
+
+
+def insert_and_get_id(cursor, query, params):
+    if DATABASE_URL:
+        cursor.execute(query + " RETURNING id", params)
+        return cursor.fetchone()["id"]
+    cursor.execute(query, params)
+    return cursor.lastrowid
 
 
 def _request_owner_clause(user_id, column="user_id"):
@@ -141,11 +223,11 @@ def get_or_create_project(cursor, user_id, project_id=None, project_name=None):
     if row:
         return row["id"], row["name"]
 
-    cursor.execute(
+    return insert_and_get_id(
+        cursor,
         "INSERT INTO projects (user_id, name) VALUES (?, ?)",
         (user_id, name),
-    )
-    return cursor.lastrowid, name
+    ), name
 
 
 def default_project_name():
@@ -875,9 +957,12 @@ def google_login():
     if not user:
         # Auto-register Google user
         dummy_hash = generate_password_hash(f"google_oauth_{uuid.uuid4().hex}")
-        cursor.execute("INSERT INTO users (email, password_hash) VALUES (?, ?)", (email, dummy_hash))
+        user_id = insert_and_get_id(
+            cursor,
+            "INSERT INTO users (email, password_hash) VALUES (?, ?)",
+            (email, dummy_hash),
+        )
         conn.commit()
-        user_id = cursor.lastrowid
     else:
         user_id = user["id"]
 
@@ -911,15 +996,18 @@ def register():
     cursor = conn.cursor()
     try:
         password_hash = generate_password_hash(password)
-        cursor.execute("INSERT INTO users (email, password_hash) VALUES (?, ?)", (email, password_hash))
+        user_id = insert_and_get_id(
+            cursor,
+            "INSERT INTO users (email, password_hash) VALUES (?, ?)",
+            (email, password_hash),
+        )
         conn.commit()
-        user_id = cursor.lastrowid
         conn.close()
 
         session["user_id"] = user_id
         session["email"] = email
         return jsonify({"success": True, "user": {"id": user_id, "email": email}})
-    except sqlite3.IntegrityError:
+    except (sqlite3.IntegrityError, POSTGRES_INTEGRITY_ERROR):
         conn.close()
         return jsonify({"error": "This email is already registered"}), 400
     except Exception as e:
@@ -1012,14 +1100,31 @@ def upload():
             project_id=project_id,
             project_name=project_name,
         )
-        cursor.execute(
-            """
-            INSERT OR REPLACE INTO translation_history
-                (user_id, project_id, job_id, original_filename, file_size, pages)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (user_id, resolved_project_id, job_id, file.filename, src_path.stat().st_size, page_count)
-        )
+        history_params = (user_id, resolved_project_id, job_id, file.filename, src_path.stat().st_size, page_count)
+        if DATABASE_URL:
+            cursor.execute(
+                """
+                INSERT INTO translation_history
+                    (user_id, project_id, job_id, original_filename, file_size, pages)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT (job_id) DO UPDATE SET
+                    user_id = EXCLUDED.user_id,
+                    project_id = EXCLUDED.project_id,
+                    original_filename = EXCLUDED.original_filename,
+                    file_size = EXCLUDED.file_size,
+                    pages = EXCLUDED.pages
+                """,
+                history_params,
+            )
+        else:
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO translation_history
+                    (user_id, project_id, job_id, original_filename, file_size, pages)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                history_params,
+            )
         cursor.execute(
             "UPDATE projects SET updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (resolved_project_id,)
