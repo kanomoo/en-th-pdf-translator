@@ -23,7 +23,9 @@ import sqlite3
 from werkzeug.security import generate_password_hash, check_password_hash
 
 try:
+    # pyrefly: ignore [missing-import]
     import psycopg
+    # pyrefly: ignore [missing-import]
     from psycopg.rows import dict_row
 except ImportError:  # Optional locally; required when DATABASE_URL is configured.
     psycopg = None
