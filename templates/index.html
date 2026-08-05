@@ -70,8 +70,8 @@
         
         <div class="header-actions">
           <!-- Scroll Sync Control Toggle -->
-          <div class="sync-toggle-container">
-            <span>Sync Scroll</span>
+          <div class="sync-toggle-container" title="Sync Scrolling between Left and Right Panes">
+            <span class="toggle-label-text">Sync Scroll</span>
             <label class="switch">
               <input type="checkbox" id="sync-scroll-toggle" checked onchange="toggleScrollSync(this.checked)">
               <span class="slider-round"></span>
@@ -79,8 +79,8 @@
           </div>
 
           <!-- Page Numbers Control Toggle -->
-          <div class="sync-toggle-container">
-            <span>Page Numbers</span>
+          <div class="sync-toggle-container" title="Show or Hide Page Numbers">
+            <span class="toggle-label-text">Page Numbers</span>
             <label class="switch">
               <input type="checkbox" id="page-number-toggle" checked onchange="togglePageNumbers(this.checked)">
               <span class="slider-round"></span>
@@ -89,12 +89,12 @@
 
           <button id="reload-btn" onclick="reloadWorkspace()" class="btn-primary" style="display: none; text-decoration: none; background: transparent; color: var(--fg-muted); border: 1px solid var(--border); box-shadow: none;">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-            Reload
+            <span class="btn-text">Reload</span>
           </button>
 
           <a id="download-btn" href="#" target="_blank" class="btn-primary" style="text-decoration: none;">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Download Translated
+            <span class="btn-text">Download Translated</span>
           </a>
 
           <!-- Auth User Button -->
