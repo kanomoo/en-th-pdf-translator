@@ -43,6 +43,7 @@ function setMobileSidebarOpen(open) {
     overlay.classList.toggle('active', open);
     document.body.classList.toggle('mobile-sidebar-open', open);
     sidebar.setAttribute('aria-hidden', String(!open));
+    sidebar.inert = !open;
     if (toggle) toggle.setAttribute('aria-expanded', String(open));
 }
 
@@ -62,6 +63,7 @@ function toggleSidebar() {
         document.body.classList.remove('mobile-sidebar-open');
         ensureSidebarOverlay().classList.remove('active');
         sidebar.setAttribute('aria-hidden', String(collapsed));
+        sidebar.inert = collapsed;
         const toggle = document.getElementById('sidebar-toggle-btn');
         if (toggle) toggle.setAttribute('aria-expanded', String(!collapsed));
     }
@@ -87,6 +89,7 @@ function syncSidebarForViewport() {
         ? sidebar.classList.contains('mobile-open')
         : !sidebar.classList.contains('collapsed');
     sidebar.setAttribute('aria-hidden', String(!open));
+    sidebar.inert = !open;
     if (toggle) toggle.setAttribute('aria-expanded', String(open));
 }
 
