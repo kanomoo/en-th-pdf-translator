@@ -17,7 +17,17 @@ function ensureSidebarOverlay() {
         overlay.className = 'sidebar-overlay';
         overlay.setAttribute('aria-label', 'Close sidebar');
         overlay.onclick = closeSidebar;
-        document.body.appendChild(overlay);
+        const appContainer = document.querySelector('.app-container');
+        if (appContainer) {
+            appContainer.prepend(overlay);
+        } else {
+            document.body.appendChild(overlay);
+        }
+    } else {
+        const appContainer = document.querySelector('.app-container');
+        if (appContainer && overlay.parentElement !== appContainer) {
+            appContainer.prepend(overlay);
+        }
     }
     return overlay;
 }
