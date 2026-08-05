@@ -211,6 +211,13 @@ if (document.readyState === 'loading') {
         return pdfJsLoader;
     }
 
+    const warmPdfPreview = () => loadPdfJs().catch(() => {});
+    if ('requestIdleCallback' in window) {
+        window.requestIdleCallback(warmPdfPreview, { timeout: 2000 });
+    } else {
+        setTimeout(warmPdfPreview, 800);
+    }
+
     function formatDate(value) {
         const date = value ? new Date(value.replace(' ', 'T')) : new Date();
         if (Number.isNaN(date.getTime())) return '';
@@ -608,11 +615,22 @@ if (document.readyState === 'loading') {
         try {
             const pdfApi = await loadPdfJs();
             if (currentRenderSession !== sessionId) return;
+
+            if (container._pageObserver) {
+                container._pageObserver.disconnect();
+            }
+            if (container._pdfLoadingTask) {
+                try {
+                    await container._pdfLoadingTask.destroy();
+                } catch (_) {}
+            }
+
             const loadingTask = pdfApi.getDocument(url);
+            container._pdfLoadingTask = loadingTask;
             const pdf = await loadingTask.promise;
-            
+
             if (currentRenderSession !== sessionId) return;
-            
+
             // Setup responsive scaling observer to re-render when container resizes
             if (!container._resizeObserver) {
                 let lastWidth = container.clientWidth;
@@ -639,6 +657,45 @@ if (document.readyState === 'loading') {
             }
             const targetWidth = availableWidth * userZoom;
 
+            const renderQueue = [];
+            const maxConcurrentRenders = 2;
+            let activeRenders = 0;
+
+            const pumpRenderQueue = () => {
+                while (activeRenders < maxConcurrentRenders && renderQueue.length > 0) {
+                    const task = renderQueue.shift();
+                    activeRenders++;
+                    task().catch((err) => {
+                        if (currentRenderSession === sessionId) {
+                            console.error('Error rendering PDF page:', err);
+                        }
+                    }).finally(() => {
+                        activeRenders--;
+                        pumpRenderQueue();
+                    });
+                }
+            };
+
+            const queuePageRender = (pageDiv, renderPage) => {
+                if (pageDiv.dataset.renderState !== 'pending') return;
+                pageDiv.dataset.renderState = 'queued';
+                renderQueue.push(renderPage);
+                pumpRenderQueue();
+            };
+
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach((entry) => {
+                    if (!entry.isIntersecting) return;
+                    const pageDiv = entry.target;
+                    observer.unobserve(pageDiv);
+                    queuePageRender(pageDiv, pageDiv._renderPage);
+                });
+            }, {
+                root: container.closest('.pane'),
+                rootMargin: '500px 0px',
+            });
+            container._pageObserver = observer;
+
             for (let i = 1; i <= pdf.numPages; i++) {
                 if (currentRenderSession !== sessionId) {
                     loadingTask.destroy();
@@ -661,45 +718,9 @@ if (document.readyState === 'loading') {
                 pageDiv.style.width = viewport.width + 'px';
                 pageDiv.style.height = viewport.height + 'px';
                 pageDiv.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
-                pageDiv.style.backgroundColor = 'white'; // Ensure PDF background is white
+                pageDiv.style.backgroundColor = 'white';
+                pageDiv.dataset.renderState = 'pending';
 
-                const outputScale = (window.devicePixelRatio || 1) * 1.5; // Render at 1.5x resolution for sharper scaling
-
-                const canvas = document.createElement('canvas');
-                canvas.width = Math.floor(viewport.width * outputScale);
-                canvas.height = Math.floor(viewport.height * outputScale);
-                canvas.style.display = 'block';
-                canvas.style.width = viewport.width + 'px';
-                canvas.style.height = viewport.height + 'px';
-                pageDiv.appendChild(canvas);
-                
-                const context = canvas.getContext('2d');
-                const transform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null;
-                const renderContext = {
-                    canvasContext: context,
-                    transform: transform,
-                    viewport: viewport
-                };
-                
-                // Render canvas
-                page.render(renderContext);
-                
-                // Render text layer
-                const textContent = await page.getTextContent();
-                const textLayerDiv = document.createElement('div');
-                textLayerDiv.setAttribute('class', 'textLayer');
-                textLayerDiv.style.width = viewport.width + 'px';
-                textLayerDiv.style.height = viewport.height + 'px';
-                textLayerDiv.style.setProperty('--scale-factor', viewport.scale);
-                pageDiv.appendChild(textLayerDiv);
-                
-                pdfApi.renderTextLayer({
-                    textContentSource: textContent,
-                    container: textLayerDiv,
-                    viewport: viewport,
-                    textDivs: []
-                });
-                
                 const pageFooter = document.createElement('div');
                 pageFooter.className = 'pdf-page-footer-label';
                 pageFooter.textContent = `Page ${i} / ${pdf.numPages}`;
@@ -709,8 +730,64 @@ if (document.readyState === 'loading') {
                 wrapper.appendChild(pageFooter);
 
                 container.appendChild(wrapper);
+
+                const renderPage = async () => {
+                    if (currentRenderSession !== sessionId) return;
+                    pageDiv.dataset.renderState = 'rendering';
+
+                    const outputScale = Math.min(window.devicePixelRatio || 1, 2);
+                    const canvas = document.createElement('canvas');
+                    canvas.width = Math.floor(viewport.width * outputScale);
+                    canvas.height = Math.floor(viewport.height * outputScale);
+                    canvas.style.display = 'block';
+                    canvas.style.width = viewport.width + 'px';
+                    canvas.style.height = viewport.height + 'px';
+                    canvas.setAttribute('aria-hidden', 'true');
+                    pageDiv.appendChild(canvas);
+
+                    const context = canvas.getContext('2d');
+                    const transform = outputScale !== 1
+                        ? [outputScale, 0, 0, outputScale, 0, 0]
+                        : null;
+                    const renderTask = page.render({
+                        canvasContext: context,
+                        transform,
+                        viewport,
+                    });
+                    await renderTask.promise;
+
+                    if (currentRenderSession !== sessionId) return;
+                    pageDiv.dataset.renderState = 'rendered';
+
+                    const textContent = await page.getTextContent();
+                    if (currentRenderSession !== sessionId) return;
+                    const textLayerDiv = document.createElement('div');
+                    textLayerDiv.className = 'textLayer';
+                    textLayerDiv.style.width = viewport.width + 'px';
+                    textLayerDiv.style.height = viewport.height + 'px';
+                    textLayerDiv.style.setProperty('--scale-factor', viewport.scale);
+                    pageDiv.appendChild(textLayerDiv);
+
+                    const textTask = pdfApi.renderTextLayer({
+                        textContentSource: textContent,
+                        container: textLayerDiv,
+                        viewport,
+                        textDivs: [],
+                    });
+                    if (textTask && textTask.promise) {
+                        await textTask.promise;
+                    }
+                };
+
+                pageDiv._renderPage = renderPage;
+                observer.observe(pageDiv);
+                if (i <= 2) {
+                    observer.unobserve(pageDiv);
+                    queuePageRender(pageDiv, renderPage);
+                }
             }
         } catch (err) {
+            if (currentRenderSession !== sessionId) return;
             console.error('Error rendering PDF:', err);
             container.innerHTML = '<div style="color:var(--fg-muted);">Cannot load PDF preview.</div>';
         }
@@ -746,14 +823,13 @@ if (document.readyState === 'loading') {
         currentRenderSession++;
         const sessionId = currentRenderSession;
 
-        // Wait a frame to ensure DOM is fully laid out so clientWidth is correct!
-        // 400ms ensures any 350ms CSS transitions on the layout are complete.
-        setTimeout(() => {
-            if (currentRenderSession !== sessionId) return;
-            // Load original and translated PDFs using PDF.js
-            renderPDF('/download_original/' + jobId, previewScrollContainerEn, sessionId);
-            renderPDF('/download/' + jobId + '/' + encodeURIComponent(dlFilename), previewScrollContainerTh, sessionId);
-        }, 400);
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                if (currentRenderSession !== sessionId) return;
+                renderPDF('/download_original/' + jobId, previewScrollContainerEn, sessionId);
+                renderPDF('/download/' + jobId + '/' + encodeURIComponent(dlFilename), previewScrollContainerTh, sessionId);
+            });
+        });
     }
 
     window.reloadWorkspace = function() {

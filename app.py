@@ -1276,12 +1276,16 @@ def download(job_id, filename):
     if not out_path:
         return jsonify({"error": "File is not ready or was not found"}), 404
 
-    return send_file(
+    response = send_file(
         str(out_path),
         as_attachment=False,
         download_name=filename,
         mimetype="application/pdf",
+        conditional=True,
+        max_age=86400,
     )
+    response.headers["Cache-Control"] = "private, max-age=86400"
+    return response
 
 
 @app.route("/download_original/<job_id>")
@@ -1291,12 +1295,16 @@ def download_original(job_id):
     if not orig_path:
         return jsonify({"error": "Original file not found"}), 404
 
-    return send_file(
+    response = send_file(
         str(orig_path),
         as_attachment=False,
         download_name=orig_path.name,
         mimetype="application/pdf",
+        conditional=True,
+        max_age=86400,
     )
+    response.headers["Cache-Control"] = "private, max-age=86400"
+    return response
 
 
 @app.route("/preview/<job_id>/<int:page>")
