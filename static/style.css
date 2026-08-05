@@ -928,6 +928,10 @@ input:checked + .slider-round:before {
   border-color: var(--border-focus);
 }
 
+.download-label-short {
+  display: none;
+}
+
 /* Workspace Content Frame */
 .workspace-area {
   flex: 1;
@@ -1276,13 +1280,13 @@ body.theme-light .batch-item {
   width: var(--split-ratio);
   border-right: 1px solid var(--border);
   background: transparent;
-  padding: 32px 10px 32px 32px;
+  padding: 24px 6px 24px 16px;
 }
 
 .pane-right {
   width: calc(100% - var(--split-ratio));
   background: rgba(255, 255, 255, 0.01);
-  padding: 32px 32px 32px 10px;
+  padding: 24px 16px 24px 6px;
 }
 
 body.theme-light .pane-right {
@@ -1372,7 +1376,7 @@ body.theme-light .pdf-page-badge {
   background-repeat: no-repeat;
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 24px;
+  padding: 8px;
   min-height: 100%;
   box-shadow: 0 4px 30px rgba(0, 0, 0, 0.15);
   font-family: var(--font-body);
@@ -1839,6 +1843,14 @@ body.theme-light .tweaks-trigger {
   .document-title-badge {
     max-width: 150px;
   }
+
+  .download-label-long {
+    display: none;
+  }
+
+  .download-label-short {
+    display: inline;
+  }
 }
 
 /* Sidebar Overlay for Mobile Drawer */
@@ -2064,6 +2076,19 @@ body.mobile-sidebar-open {
   .btn-primary, .btn-secondary {
     padding: 6px 10px;
     font-size: 12px;
+  }
+
+  #download-btn {
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+    padding: 0;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  #download-btn .btn-text {
+    display: none;
   }
 
   .mobile-view-switcher {

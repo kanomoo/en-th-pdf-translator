@@ -630,7 +630,7 @@ if (document.readyState === 'loading') {
             
             // Calculate scale based on container width and user zoom
             const userZoom = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--pdf-zoom').trim()) || 1.0;
-            const widthInset = window.innerWidth <= 768 ? 0 : 40;
+            const widthInset = window.innerWidth <= 768 ? 0 : 8;
             let availableWidth = container.clientWidth - widthInset;
             if (availableWidth <= 0) {
                 const rect = container.getBoundingClientRect();
