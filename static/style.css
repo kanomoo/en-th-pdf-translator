@@ -1810,6 +1810,7 @@ body.theme-light .tweaks-trigger {
   }
   .sync-toggle-container .toggle-label-text {
     font-size: 11px;
+    display: inline-block !important;
   }
   #user-display-name {
     max-width: 100px;
@@ -1821,10 +1822,8 @@ body.theme-light .tweaks-trigger {
 
 @media (max-width: 1080px) {
   .sync-toggle-container .toggle-label-text {
-    display: none;
-  }
-  .header-actions .btn-text {
-    display: none;
+    font-size: 11px;
+    display: inline-block !important;
   }
   .document-title-badge {
     max-width: 120px;
@@ -1902,6 +1901,10 @@ body.theme-light .tweaks-trigger {
 
   .sidebar-footer {
     display: flex !important;
+  }
+
+  .main-header .header-actions > .sync-toggle-container {
+    display: none !important;
   }
 
   .main-header {
