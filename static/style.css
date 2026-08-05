@@ -1831,35 +1831,77 @@ body.theme-light .tweaks-trigger {
   }
 }
 
+/* Sidebar Overlay for Mobile Drawer */
+.sidebar-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 9998;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.sidebar-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 @media (max-width: 768px) {
   .app-container {
     flex-direction: column;
-  }
-  
-  aside.sidebar {
-    width: 100%;
-    height: 52px;
-    flex-direction: row;
-    border-right: 0;
-    border-bottom: 1px solid var(--border);
-    align-items: center;
-    padding: 0 12px;
-  }
-  
-  aside.sidebar.collapsed {
-    margin-left: 0;
-    transform: translateY(-52px);
-    height: 0;
+    position: relative;
     overflow: hidden;
   }
   
-  .sidebar-header {
+  aside.sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 280px;
+    height: 100vh;
+    z-index: 9999;
+    background: var(--bg);
+    border-right: 1px solid var(--border);
+    border-bottom: none;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.5);
+    transform: translateX(0);
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    margin-left: 0;
     padding: 0;
-    border-bottom: 0;
   }
   
-  .new-btn, .explorer-toolbar, .history-section, .sidebar-footer {
-    display: none;
+  aside.sidebar.collapsed {
+    transform: translateX(-100%);
+    margin-left: 0;
+    height: 100vh;
+    display: flex !important;
+  }
+  
+  .sidebar-header {
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex !important;
+  }
+  
+  .explorer-toolbar {
+    display: flex !important;
+    padding: 10px 14px;
+  }
+
+  .history-section {
+    display: flex !important;
+    flex: 1;
+    overflow-y: auto;
+  }
+
+  .sidebar-footer {
+    display: flex !important;
   }
 
   .main-header {
@@ -1871,10 +1913,6 @@ body.theme-light .tweaks-trigger {
     max-width: 120px;
     padding: 4px 8px;
     font-size: 11px;
-  }
-
-  .sync-toggle-container span {
-    display: none;
   }
 
   #user-display-name {
@@ -1896,23 +1934,24 @@ body.theme-light .tweaks-trigger {
     justify-content: space-between;
     background: var(--surface-base);
     border-bottom: 1px solid var(--border);
-    padding: 6px 12px;
-    gap: 8px;
+    padding: 6px 10px;
+    gap: 6px;
     z-index: 5;
     flex-shrink: 0;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .mobile-tabs {
     display: flex;
     gap: 4px;
-    flex: 1;
-    min-width: 0;
+    flex-shrink: 0;
   }
 
   .mobile-toggles {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     flex-shrink: 0;
   }
 
@@ -1928,7 +1967,6 @@ body.theme-light .tweaks-trigger {
   }
 
   .mobile-tab-btn {
-    flex: 1;
     padding: 5px 8px;
     font-size: 11px;
     font-family: var(--font-mono);
@@ -1940,6 +1978,7 @@ body.theme-light .tweaks-trigger {
     cursor: pointer;
     transition: var(--transition-smooth);
     text-align: center;
+    white-space: nowrap;
   }
 
   .mobile-tab-btn.active {

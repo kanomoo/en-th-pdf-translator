@@ -45,6 +45,31 @@
     let historyRequestId = 0;
     let toastTimer = null;
 
+    // ---- Mobile & Desktop Sidebar Drawer Toggle ----
+    window.toggleSidebar = function() {
+        const sidebar = document.getElementById('sidebar-pane');
+        if (!sidebar) return;
+        let overlay = document.querySelector('.sidebar-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.className = 'sidebar-overlay';
+            overlay.onclick = function() {
+                sidebar.classList.add('collapsed');
+                overlay.classList.remove('active');
+            };
+            document.body.appendChild(overlay);
+        }
+
+        const isCollapsed = sidebar.classList.contains('collapsed');
+        if (isCollapsed) {
+            sidebar.classList.remove('collapsed');
+            overlay.classList.add('active');
+        } else {
+            sidebar.classList.add('collapsed');
+            overlay.classList.remove('active');
+        }
+    };
+
     // ---- Helpers ----
     window.showToast = function(msg) {
         let toast = document.getElementById('toast-notif');
@@ -595,6 +620,13 @@
         uploadScreen.style.display = 'none';
         processingScreen.style.display = 'none';
         splitScreen.style.display = 'flex';
+        
+        if (window.innerWidth <= 768) {
+            const sidebarPane = document.getElementById('sidebar-pane');
+            if (sidebarPane) sidebarPane.classList.add('collapsed');
+            const overlay = document.querySelector('.sidebar-overlay');
+            if (overlay) overlay.classList.remove('active');
+        }
         
         const container = document.querySelector('.split-pane-container');
         if (container && !container.className.includes('view-')) {
