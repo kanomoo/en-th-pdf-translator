@@ -537,11 +537,6 @@
                 pageDiv.style.height = viewport.height + 'px';
                 pageDiv.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
                 pageDiv.style.backgroundColor = 'white'; // Ensure PDF background is white
-                
-                const pageBadge = document.createElement('div');
-                pageBadge.className = 'pdf-page-badge';
-                pageBadge.textContent = `Page ${i} of ${pdf.numPages}`;
-                pageDiv.appendChild(pageBadge);
 
                 const outputScale = (window.devicePixelRatio || 1) * 1.5; // Render at 1.5x resolution for sharper scaling
 
@@ -583,6 +578,7 @@
                 const pageFooter = document.createElement('div');
                 pageFooter.className = 'pdf-page-footer-label';
                 pageFooter.textContent = `Page ${i} / ${pdf.numPages}`;
+                pageFooter.style.display = showPageNumbers ? 'block' : 'none';
 
                 wrapper.appendChild(pageDiv);
                 wrapper.appendChild(pageFooter);
@@ -1167,6 +1163,20 @@
     window.toggleScrollSync = function(active) {
         isScrollSyncActive = active;
         showToast(active ? 'Scroll synchronization enabled' : 'Scroll synchronization disabled');
+    };
+
+    // ---- Page Numbers Toggle ----
+    let showPageNumbers = localStorage.getItem('pdf_translator_show_page_numbers') !== 'false';
+    const pageNumToggleInput = document.getElementById('page-number-toggle');
+    if (pageNumToggleInput) pageNumToggleInput.checked = showPageNumbers;
+
+    window.togglePageNumbers = function(active) {
+        showPageNumbers = active;
+        localStorage.setItem('pdf_translator_show_page_numbers', active ? 'true' : 'false');
+        document.querySelectorAll('.pdf-page-footer-label').forEach(el => {
+            el.style.display = active ? 'block' : 'none';
+        });
+        showToast(active ? 'Page numbers enabled' : 'Page numbers disabled');
     };
 
     function syncScrollLeft() {

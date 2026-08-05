@@ -78,6 +78,15 @@
             </label>
           </div>
 
+          <!-- Page Numbers Control Toggle -->
+          <div class="sync-toggle-container">
+            <span>Page Numbers</span>
+            <label class="switch">
+              <input type="checkbox" id="page-number-toggle" checked onchange="togglePageNumbers(this.checked)">
+              <span class="slider-round"></span>
+            </label>
+          </div>
+
           <button id="reload-btn" onclick="reloadWorkspace()" class="btn-primary" style="display: none; text-decoration: none; background: transparent; color: var(--fg-muted); border: 1px solid var(--border); box-shadow: none;">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
             Reload
