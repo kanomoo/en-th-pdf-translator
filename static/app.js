@@ -120,6 +120,10 @@ if (document.readyState === 'loading') {
     const previewScrollContainerTh = document.getElementById('preview-scroll-container-th');
     const reloadBtn = document.getElementById('reload-btn');
 
+    const PDFJS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    const PDFJS_WORKER_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    let pdfJsLoader = null;
+
     // ---- State ----
     let currentJobId = null;
     let currentOrigFilename = null;
@@ -170,6 +174,28 @@ if (document.readyState === 'loading') {
             '"': '&quot;',
             "'": '&#39;',
         }[ch]));
+    }
+
+    function loadPdfJs() {
+        if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+        if (pdfJsLoader) return pdfJsLoader;
+
+        pdfJsLoader = new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = PDFJS_URL;
+            script.async = true;
+            script.onload = () => {
+                window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL;
+                resolve(window.pdfjsLib);
+            };
+            script.onerror = () => {
+                pdfJsLoader = null;
+                reject(new Error('Could not load the PDF preview library'));
+            };
+            document.head.appendChild(script);
+        });
+
+        return pdfJsLoader;
     }
 
     function formatDate(value) {
@@ -567,7 +593,9 @@ if (document.readyState === 'loading') {
 
     async function renderPDF(url, container, sessionId) {
         try {
-            const loadingTask = pdfjsLib.getDocument(url);
+            const pdfApi = await loadPdfJs();
+            if (currentRenderSession !== sessionId) return;
+            const loadingTask = pdfApi.getDocument(url);
             const pdf = await loadingTask.promise;
             
             if (currentRenderSession !== sessionId) return;
@@ -651,7 +679,7 @@ if (document.readyState === 'loading') {
                 textLayerDiv.style.setProperty('--scale-factor', viewport.scale);
                 pageDiv.appendChild(textLayerDiv);
                 
-                pdfjsLib.renderTextLayer({
+                pdfApi.renderTextLayer({
                     textContentSource: textContent,
                     container: textLayerDiv,
                     viewport: viewport,
@@ -1346,16 +1374,27 @@ if (document.readyState === 'loading') {
         }
     });
 
-    // Mouse Spotlight
-    document.addEventListener('mousemove', (e) => {
-        document.querySelectorAll('.glow-card-target').forEach(card => {
-            const rect = card.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
-            card.style.setProperty('--mouse-x', `${x}px`);
-            card.style.setProperty('--mouse-y', `${y}px`);
-        });
-    });
+    // Mouse spotlight is desktop-only and capped at one layout pass per frame.
+    if (window.matchMedia('(pointer: fine)').matches) {
+        let spotlightFrame = null;
+        let spotlightX = 0;
+        let spotlightY = 0;
+
+        document.addEventListener('mousemove', (event) => {
+            spotlightX = event.clientX;
+            spotlightY = event.clientY;
+            if (spotlightFrame !== null) return;
+
+            spotlightFrame = requestAnimationFrame(() => {
+                spotlightFrame = null;
+                document.querySelectorAll('.glow-card-target').forEach(card => {
+                    const rect = card.getBoundingClientRect();
+                    card.style.setProperty('--mouse-x', `${spotlightX - rect.left}px`);
+                    card.style.setProperty('--mouse-y', `${spotlightY - rect.top}px`);
+                });
+            });
+        }, { passive: true });
+    }
 
     // Sidebar resize handler
     const sidebarHandler = document.getElementById('sidebar-handler');
