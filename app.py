@@ -1733,7 +1733,7 @@ def delete_history(job_id):
 # Run
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    print(f"🌐 PDF Translator running at http://localhost:5000")
-    print(f"📁 Thai font (regular): {FONT_REG}")
-    print(f"📁 Thai font (bold):    {FONT_BOLD}")
+    print("[server] PDF Translator running at http://localhost:5000")
+    print(f"[font] Thai regular: {FONT_REG}")
+    print(f"[font] Thai bold:    {FONT_BOLD}")
     app.run(host="0.0.0.0", port=5000, debug=True, threaded=True)
