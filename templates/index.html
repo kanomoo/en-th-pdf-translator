@@ -319,12 +319,12 @@
       <!-- LOGIN FORM -->
       <form id="form-login" onsubmit="handleLoginSubmit(event)">
         <div class="auth-input-group">
-          <label>Email</label>
-          <input type="email" id="login-email" required placeholder="name@example.com">
+          <label for="login-email">Email</label>
+          <input type="email" id="login-email" autocomplete="email" required placeholder="name@example.com">
         </div>
         <div class="auth-input-group">
-          <label>Password</label>
-          <input type="password" id="login-password" required placeholder="••••••••">
+          <label for="login-password">Password</label>
+          <input type="password" id="login-password" autocomplete="current-password" required placeholder="••••••••">
         </div>
         <button type="submit" class="auth-submit-btn">Sign in</button>
       </form>
@@ -332,12 +332,12 @@
       <!-- REGISTER FORM -->
       <form id="form-register" onsubmit="handleRegisterSubmit(event)" style="display: none;">
         <div class="auth-input-group">
-          <label>Email</label>
-          <input type="email" id="reg-email" required placeholder="name@example.com">
+          <label for="reg-email">Email</label>
+          <input type="email" id="reg-email" autocomplete="email" required placeholder="name@example.com">
         </div>
         <div class="auth-input-group">
-          <label>Password (at least 6 characters)</label>
-          <input type="password" id="reg-password" required minlength="6" placeholder="••••••••">
+          <label for="reg-password">Password (at least 6 characters)</label>
+          <input type="password" id="reg-password" autocomplete="new-password" required minlength="6" placeholder="••••••••">
         </div>
         <button type="submit" class="auth-submit-btn">Create account</button>
       </form>
