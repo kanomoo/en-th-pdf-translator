@@ -100,11 +100,15 @@ def init_db():
                 file_size BIGINT DEFAULT 0,
                 pages INTEGER DEFAULT 0,
                 position INTEGER DEFAULT 0,
+                original_pdf BYTEA,
+                translated_pdf BYTEA,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
         cursor.execute("ALTER TABLE translation_history ADD COLUMN IF NOT EXISTS project_id BIGINT")
         cursor.execute("ALTER TABLE translation_history ADD COLUMN IF NOT EXISTS position INTEGER DEFAULT 0")
+        cursor.execute("ALTER TABLE translation_history ADD COLUMN IF NOT EXISTS original_pdf BYTEA")
+        cursor.execute("ALTER TABLE translation_history ADD COLUMN IF NOT EXISTS translated_pdf BYTEA")
         cursor.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS position INTEGER DEFAULT 0")
         conn.commit()
         conn.close()
@@ -130,6 +134,8 @@ def init_db():
             file_size INTEGER DEFAULT 0,
             pages INTEGER DEFAULT 0,
             position INTEGER DEFAULT 0,
+            original_pdf BLOB,
+            translated_pdf BLOB,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -152,6 +158,10 @@ def init_db():
         cursor.execute("ALTER TABLE translation_history ADD COLUMN project_id INTEGER")
     if "position" not in existing_columns:
         cursor.execute("ALTER TABLE translation_history ADD COLUMN position INTEGER DEFAULT 0")
+    if "original_pdf" not in existing_columns:
+        cursor.execute("ALTER TABLE translation_history ADD COLUMN original_pdf BLOB")
+    if "translated_pdf" not in existing_columns:
+        cursor.execute("ALTER TABLE translation_history ADD COLUMN translated_pdf BLOB")
     
     cursor.execute("PRAGMA table_info(projects)")
     existing_proj_columns = {row[1] for row in cursor.fetchall()}
@@ -260,6 +270,51 @@ DESIGN_DIR = BASE_DIR / "design"
 
 for d in (UPLOAD_DIR, OUTPUT_DIR, CACHE_DIR, DOCS_DIR, SCRIPTS_DIR, EXAMPLES_DIR, DESIGN_DIR):
     d.mkdir(parents=True, exist_ok=True)
+
+
+def get_pdf_file_path(job_id, is_original=False):
+    """Retrieve PDF path from disk, or restore it from DB BLOB if missing."""
+    if is_original:
+        matching = list(UPLOAD_DIR.glob(f"{job_id}_*"))
+        if matching and matching[0].exists():
+            return matching[0]
+        try:
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute("SELECT original_filename, original_pdf FROM translation_history WHERE job_id = ?", (job_id,))
+            row = cursor.fetchone()
+            conn.close()
+            if row and row["original_pdf"]:
+                orig_name = row["original_filename"] or "document.pdf"
+                safe_name = re.sub(r'[^\w\-.]', '_', orig_name)
+                target_path = UPLOAD_DIR / f"{job_id}_{safe_name}"
+                target_path.parent.mkdir(parents=True, exist_ok=True)
+                raw_data = row["original_pdf"]
+                pdf_data = bytes(raw_data) if not isinstance(raw_data, bytes) else raw_data
+                target_path.write_bytes(pdf_data)
+                return target_path
+        except Exception as e:
+            print(f"Error restoring original PDF from DB: {e}")
+        return None
+    else:
+        out_path = OUTPUT_DIR / f"{job_id}.pdf"
+        if out_path.exists():
+            return out_path
+        try:
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute("SELECT translated_pdf FROM translation_history WHERE job_id = ?", (job_id,))
+            row = cursor.fetchone()
+            conn.close()
+            if row and row["translated_pdf"]:
+                out_path.parent.mkdir(parents=True, exist_ok=True)
+                raw_data = row["translated_pdf"]
+                pdf_data = bytes(raw_data) if not isinstance(raw_data, bytes) else raw_data
+                out_path.write_bytes(pdf_data)
+                return out_path
+        except Exception as e:
+            print(f"Error restoring translated PDF from DB: {e}")
+        return None
 
 # Clean up legacy root files if they exist (moved to subdirectories)
 for _legacy_file in ["debug.py", "extract.py", "test_extract.py", "translate_pdf.py", "GETTING_STARTED.md", "DEPLOY_TO_GITHUB.md", "organize.py", "organize_cleanup.py"]:
@@ -901,6 +956,16 @@ def run_translation(job_id, src_path, parsing_mode="auto"):
         doc.save(str(out_path), garbage=4, deflate=True)
         doc.close()
 
+        try:
+            translated_bytes = out_path.read_bytes()
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute("UPDATE translation_history SET translated_pdf = ? WHERE job_id = ?", (translated_bytes, job_id))
+            conn.commit()
+            conn.close()
+        except Exception as err:
+            print(f"Error saving translated PDF BLOB to DB: {err}")
+
         with jobs_lock:
             jobs[job_id]["status"] = "complete"
             jobs[job_id]["output"] = str(out_path)
@@ -1108,6 +1173,7 @@ def upload():
     user_id = session.get("user_id")
     project = {"id": None, "name": ""}
     try:
+        original_bytes = src_path.read_bytes()
         conn = get_db()
         cursor = conn.cursor()
         resolved_project_id, resolved_project_name = get_or_create_project(
@@ -1116,19 +1182,20 @@ def upload():
             project_id=project_id,
             project_name=project_name,
         )
-        history_params = (user_id, resolved_project_id, job_id, file.filename, src_path.stat().st_size, page_count)
+        history_params = (user_id, resolved_project_id, job_id, file.filename, src_path.stat().st_size, page_count, original_bytes)
         if DATABASE_URL:
             cursor.execute(
                 """
                 INSERT INTO translation_history
-                    (user_id, project_id, job_id, original_filename, file_size, pages)
-                VALUES (?, ?, ?, ?, ?, ?)
+                    (user_id, project_id, job_id, original_filename, file_size, pages, original_pdf)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (job_id) DO UPDATE SET
                     user_id = EXCLUDED.user_id,
                     project_id = EXCLUDED.project_id,
                     original_filename = EXCLUDED.original_filename,
                     file_size = EXCLUDED.file_size,
-                    pages = EXCLUDED.pages
+                    pages = EXCLUDED.pages,
+                    original_pdf = EXCLUDED.original_pdf
                 """,
                 history_params,
             )
@@ -1136,8 +1203,8 @@ def upload():
             cursor.execute(
                 """
                 INSERT OR REPLACE INTO translation_history
-                    (user_id, project_id, job_id, original_filename, file_size, pages)
-                VALUES (?, ?, ?, ?, ?, ?)
+                    (user_id, project_id, job_id, original_filename, file_size, pages, original_pdf)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 history_params,
             )
@@ -1205,13 +1272,9 @@ def progress(job_id):
 
 @app.route("/download/<job_id>/<filename>")
 def download(job_id, filename):
-    with jobs_lock:
-        job = jobs.get(job_id)
-        
-    out_path = OUTPUT_DIR / f"{job_id}.pdf"
-    if not job or job.get("status") != "complete":
-        if not out_path.exists():
-            return jsonify({"error": "File is not ready or was not found"}), 404
+    out_path = get_pdf_file_path(job_id, is_original=False)
+    if not out_path:
+        return jsonify({"error": "File is not ready or was not found"}), 404
 
     return send_file(
         str(out_path),
@@ -1224,11 +1287,10 @@ def download(job_id, filename):
 @app.route("/download_original/<job_id>")
 def download_original(job_id):
     """Serve the original PDF file."""
-    matching_uploads = list(UPLOAD_DIR.glob(f"{job_id}_*"))
-    if not matching_uploads:
+    orig_path = get_pdf_file_path(job_id, is_original=True)
+    if not orig_path:
         return jsonify({"error": "Original file not found"}), 404
-        
-    orig_path = matching_uploads[0]
+
     return send_file(
         str(orig_path),
         as_attachment=False,
@@ -1240,13 +1302,9 @@ def download_original(job_id):
 @app.route("/preview/<job_id>/<int:page>")
 def preview(job_id, page):
     """Render a page of the translated PDF as a PNG image."""
-    with jobs_lock:
-        job = jobs.get(job_id)
-        
-    out_path = OUTPUT_DIR / f"{job_id}.pdf"
-    if not job or job.get("status") != "complete":
-        if not out_path.exists():
-            return jsonify({"error": "File is not ready or was not found"}), 404
+    out_path = get_pdf_file_path(job_id, is_original=False)
+    if not out_path:
+        return jsonify({"error": "File is not ready or was not found"}), 404
 
     doc = fitz.open(str(out_path))
     if page < 0 or page >= len(doc):
@@ -1265,12 +1323,9 @@ def preview(job_id, page):
 @app.route("/preview_original/<job_id>/<int:page>")
 def preview_original(job_id, page):
     """Render a page of the original PDF as a PNG image."""
-    # Find original file in UPLOAD_DIR
-    matching_uploads = list(UPLOAD_DIR.glob(f"{job_id}_*"))
-    if not matching_uploads:
+    orig_path = get_pdf_file_path(job_id, is_original=True)
+    if not orig_path:
         return jsonify({"error": "Original file not found"}), 404
-        
-    orig_path = matching_uploads[0]
 
     try:
         doc = fitz.open(str(orig_path))
@@ -1301,7 +1356,8 @@ def get_history():
         cursor.execute(
             """
             SELECT
-                h.*,
+                h.id, h.user_id, h.project_id, h.job_id, h.original_filename, h.file_size, h.pages, h.position, h.created_at,
+                (CASE WHEN h.translated_pdf IS NOT NULL THEN 1 ELSE 0 END) AS has_db_pdf,
                 COALESCE(p.name, 'Unfiled') AS project_name,
                 p.created_at AS project_created_at,
                 p.updated_at AS project_updated_at,
@@ -1317,7 +1373,8 @@ def get_history():
         cursor.execute(
             """
             SELECT
-                h.*,
+                h.id, h.user_id, h.project_id, h.job_id, h.original_filename, h.file_size, h.pages, h.position, h.created_at,
+                (CASE WHEN h.translated_pdf IS NOT NULL THEN 1 ELSE 0 END) AS has_db_pdf,
                 COALESCE(p.name, 'Unfiled') AS project_name,
                 p.created_at AS project_created_at,
                 p.updated_at AS project_updated_at,
@@ -1352,7 +1409,8 @@ def get_history():
     for row in rows:
         job_id = row["job_id"]
         out_file = OUTPUT_DIR / f"{job_id}.pdf"
-        if out_file.exists():
+        has_db_pdf = bool(row["has_db_pdf"]) if ("has_db_pdf" in row.keys() and row["has_db_pdf"]) else False
+        if out_file.exists() or has_db_pdf:
             history_list.append({
                 "job_id": job_id,
                 "filename": row["original_filename"],
