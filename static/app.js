@@ -2,6 +2,57 @@
  * PDF Translator — Frontend Logic (Next.js B&W Theme)
  */
 
+// ============================================================
+// GLOBAL FUNCTIONS (must be outside IIFE so HTML onclick works)
+// ============================================================
+function isMobile() {
+    return window.innerWidth <= 768;
+}
+
+function closeSidebar() {
+    const sidebar = document.getElementById('sidebar-pane');
+    const overlay = document.querySelector('.sidebar-overlay');
+    if (sidebar) sidebar.classList.remove('mobile-open');
+    if (overlay) overlay.classList.remove('active');
+}
+
+function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar-pane');
+    if (!sidebar) return;
+
+    // Ensure overlay exists
+    let overlay = document.querySelector('.sidebar-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.className = 'sidebar-overlay';
+        overlay.onclick = function() { closeSidebar(); };
+        document.body.appendChild(overlay);
+    }
+
+    if (isMobile()) {
+        // Mobile: toggle mobile-open class (sidebar starts hidden via CSS)
+        const isOpen = sidebar.classList.contains('mobile-open');
+        if (isOpen) {
+            sidebar.classList.remove('mobile-open');
+            overlay.classList.remove('active');
+        } else {
+            sidebar.classList.add('mobile-open');
+            overlay.classList.add('active');
+        }
+    } else {
+        // Desktop: toggle collapsed class (sidebar starts visible)
+        const isCollapsed = sidebar.classList.contains('collapsed');
+        if (isCollapsed) {
+            sidebar.classList.remove('collapsed');
+        } else {
+            sidebar.classList.add('collapsed');
+        }
+        overlay.classList.remove('active');
+    }
+}
+
+// ============================================================
+
 (function () {
     'use strict';
 
@@ -45,55 +96,7 @@
     let historyRequestId = 0;
     let toastTimer = null;
 
-    // ---- Mobile & Desktop Sidebar Drawer Toggle ----
-    function isMobile() {
-        return window.innerWidth <= 768;
-    }
-
-    window.toggleSidebar = function() {
-        const sidebar = document.getElementById('sidebar-pane');
-        if (!sidebar) return;
-
-        // Ensure overlay exists
-        let overlay = document.querySelector('.sidebar-overlay');
-        if (!overlay) {
-            overlay = document.createElement('div');
-            overlay.className = 'sidebar-overlay';
-            overlay.onclick = function() { closeSidebar(); };
-            document.body.appendChild(overlay);
-        }
-
-        if (isMobile()) {
-            // On mobile: toggle mobile-open class (sidebar starts hidden)
-            const isOpen = sidebar.classList.contains('mobile-open');
-            if (isOpen) {
-                sidebar.classList.remove('mobile-open');
-                overlay.classList.remove('active');
-            } else {
-                sidebar.classList.add('mobile-open');
-                overlay.classList.add('active');
-            }
-        } else {
-            // On desktop: toggle collapsed class (sidebar starts visible)
-            const isCollapsed = sidebar.classList.contains('collapsed');
-            if (isCollapsed) {
-                sidebar.classList.remove('collapsed');
-                overlay.classList.remove('active');
-            } else {
-                sidebar.classList.add('collapsed');
-                overlay.classList.remove('active');
-            }
-        }
-    };
-
-    function closeSidebar() {
-        const sidebar = document.getElementById('sidebar-pane');
-        const overlay = document.querySelector('.sidebar-overlay');
-        if (sidebar) {
-            sidebar.classList.remove('mobile-open');
-        }
-        if (overlay) overlay.classList.remove('active');
-    }
+    // ---- Mobile & Desktop Sidebar Drawer Toggle (also available globally above) ----
 
     // ---- Helpers ----
     window.showToast = function(msg) {
