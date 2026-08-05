@@ -46,29 +46,54 @@
     let toastTimer = null;
 
     // ---- Mobile & Desktop Sidebar Drawer Toggle ----
+    function isMobile() {
+        return window.innerWidth <= 768;
+    }
+
     window.toggleSidebar = function() {
         const sidebar = document.getElementById('sidebar-pane');
         if (!sidebar) return;
+
+        // Ensure overlay exists
         let overlay = document.querySelector('.sidebar-overlay');
         if (!overlay) {
             overlay = document.createElement('div');
             overlay.className = 'sidebar-overlay';
-            overlay.onclick = function() {
-                sidebar.classList.add('collapsed');
-                overlay.classList.remove('active');
-            };
+            overlay.onclick = function() { closeSidebar(); };
             document.body.appendChild(overlay);
         }
 
-        const isCollapsed = sidebar.classList.contains('collapsed');
-        if (isCollapsed) {
-            sidebar.classList.remove('collapsed');
-            overlay.classList.add('active');
+        if (isMobile()) {
+            // On mobile: toggle mobile-open class (sidebar starts hidden)
+            const isOpen = sidebar.classList.contains('mobile-open');
+            if (isOpen) {
+                sidebar.classList.remove('mobile-open');
+                overlay.classList.remove('active');
+            } else {
+                sidebar.classList.add('mobile-open');
+                overlay.classList.add('active');
+            }
         } else {
-            sidebar.classList.add('collapsed');
-            overlay.classList.remove('active');
+            // On desktop: toggle collapsed class (sidebar starts visible)
+            const isCollapsed = sidebar.classList.contains('collapsed');
+            if (isCollapsed) {
+                sidebar.classList.remove('collapsed');
+                overlay.classList.remove('active');
+            } else {
+                sidebar.classList.add('collapsed');
+                overlay.classList.remove('active');
+            }
         }
     };
+
+    function closeSidebar() {
+        const sidebar = document.getElementById('sidebar-pane');
+        const overlay = document.querySelector('.sidebar-overlay');
+        if (sidebar) {
+            sidebar.classList.remove('mobile-open');
+        }
+        if (overlay) overlay.classList.remove('active');
+    }
 
     // ---- Helpers ----
     window.showToast = function(msg) {

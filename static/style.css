@@ -712,16 +712,15 @@ body.theme-light .action-btn:hover {
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
-  justify-content: space-between;
   padding: 0 16px;
-  gap: 12px;
+  gap: 8px;
   background: rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   z-index: 10;
   min-width: 0;
-  position: relative;
-  overflow: hidden;
+  box-sizing: border-box;
+  width: 100%;
 }
 
 body.theme-light .main-header {
@@ -731,10 +730,9 @@ body.theme-light .main-header {
 .header-left {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
   flex: 0 0 auto;
-  z-index: 2;
 }
 
 .menu-toggle-btn {
@@ -750,7 +748,6 @@ body.theme-light .main-header {
   border-radius: 6px;
   transition: var(--transition-smooth);
   flex-shrink: 0;
-  z-index: 3;
 }
 
 .menu-toggle-btn:hover {
@@ -771,7 +768,7 @@ body.theme-light .main-header {
   gap: 6px;
   font-weight: 500;
   min-width: 0;
-  max-width: 220px;
+  max-width: 200px;
   flex-shrink: 1;
 }
 
@@ -790,9 +787,7 @@ body.theme-light .main-header {
   flex: 1 1 auto;
   justify-content: flex-end;
   min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  overflow: hidden;
 }
 
 .header-actions::-webkit-scrollbar {
@@ -804,21 +799,22 @@ body.theme-light .main-header {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-right: 4px;
   font-size: 12px;
   color: var(--fg-muted);
   font-weight: 500;
   white-space: nowrap;
   flex-shrink: 0;
+  margin-right: 0;
 }
 
 .sync-toggle-container .toggle-label-text {
   white-space: nowrap;
   user-select: none;
+  display: inline-block;
 }
 
 #user-display-name {
-  max-width: 140px;
+  max-width: 120px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1802,31 +1798,19 @@ body.theme-light .tweaks-trigger {
   display: none;
 }
 
-@media (max-width: 1300px) {
+@media (max-width: 1200px) {
   .sync-toggle-container {
     gap: 4px;
-    margin-right: 2px;
     font-size: 11px;
   }
   .sync-toggle-container .toggle-label-text {
     font-size: 11px;
-    display: inline-block !important;
   }
   #user-display-name {
-    max-width: 100px;
+    max-width: 90px;
   }
   .document-title-badge {
     max-width: 150px;
-  }
-}
-
-@media (max-width: 1080px) {
-  .sync-toggle-container .toggle-label-text {
-    font-size: 11px;
-    display: inline-block !important;
-  }
-  .document-title-badge {
-    max-width: 120px;
   }
 }
 
@@ -1851,10 +1835,9 @@ body.theme-light .tweaks-trigger {
 @media (max-width: 768px) {
   .app-container {
     flex-direction: column;
-    position: relative;
-    overflow: hidden;
   }
-  
+
+  /* Sidebar is a slide-in drawer, starts hidden (collapsed) */
   aside.sidebar {
     position: fixed;
     top: 0;
@@ -1869,27 +1852,29 @@ body.theme-light .tweaks-trigger {
     display: flex;
     flex-direction: column;
     box-shadow: 4px 0 24px rgba(0, 0, 0, 0.5);
-    transform: translateX(0);
+    transform: translateX(-100%);  /* Start hidden on mobile */
     transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     margin-left: 0;
     padding: 0;
   }
-  
-  aside.sidebar.collapsed {
-    transform: translateX(-100%);
-    margin-left: 0;
-    height: 100vh;
-    display: flex !important;
+
+  /* Open state */
+  aside.sidebar.mobile-open {
+    transform: translateX(0);
   }
-  
+
+  /* On mobile, always show sidebar content (it's in a drawer) */
   .sidebar-header {
     padding: 16px;
     border-bottom: 1px solid var(--border);
     display: flex !important;
   }
-  
-  .explorer-toolbar {
+
+  .new-btn, .explorer-toolbar {
     display: flex !important;
+  }
+
+  .explorer-toolbar {
     padding: 10px 14px;
   }
 
@@ -1903,6 +1888,7 @@ body.theme-light .tweaks-trigger {
     display: flex !important;
   }
 
+  /* Hide desktop-only toggles from main header on mobile */
   .main-header .header-actions > .sync-toggle-container {
     display: none !important;
   }
