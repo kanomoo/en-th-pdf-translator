@@ -1162,17 +1162,18 @@
 
     window.toggleScrollSync = function(active) {
         isScrollSyncActive = active;
+        document.querySelectorAll('#sync-scroll-toggle, #sync-scroll-toggle-mobile').forEach(el => el.checked = active);
         showToast(active ? 'Scroll synchronization enabled' : 'Scroll synchronization disabled');
     };
 
     // ---- Page Numbers Toggle ----
     let showPageNumbers = localStorage.getItem('pdf_translator_show_page_numbers') !== 'false';
-    const pageNumToggleInput = document.getElementById('page-number-toggle');
-    if (pageNumToggleInput) pageNumToggleInput.checked = showPageNumbers;
+    document.querySelectorAll('#page-number-toggle, #page-number-toggle-mobile').forEach(el => el.checked = showPageNumbers);
 
     window.togglePageNumbers = function(active) {
         showPageNumbers = active;
         localStorage.setItem('pdf_translator_show_page_numbers', active ? 'true' : 'false');
+        document.querySelectorAll('#page-number-toggle, #page-number-toggle-mobile').forEach(el => el.checked = active);
         document.querySelectorAll('.pdf-page-footer-label').forEach(el => {
             el.style.display = active ? 'block' : 'none';
         });

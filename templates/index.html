@@ -187,9 +187,27 @@
         <!-- STATE 3: WORKSPACE SPLIT PANES (Translation PDF view) -->
         <div class="state-workspace" id="split-screen" style="display: none;">
           <div class="mobile-view-switcher">
-            <button class="mobile-tab-btn active" data-view="both" onclick="setMobileView('both')">Both</button>
-            <button class="mobile-tab-btn" data-view="en" onclick="setMobileView('en')">English</button>
-            <button class="mobile-tab-btn" data-view="th" onclick="setMobileView('th')">Thai</button>
+            <div class="mobile-tabs">
+              <button class="mobile-tab-btn active" data-view="both" onclick="setMobileView('both')">Both</button>
+              <button class="mobile-tab-btn" data-view="en" onclick="setMobileView('en')">English</button>
+              <button class="mobile-tab-btn" data-view="th" onclick="setMobileView('th')">Thai</button>
+            </div>
+            <div class="mobile-toggles">
+              <div class="sync-toggle-container mobile-toggle" title="Sync Scroll">
+                <span>Sync</span>
+                <label class="switch">
+                  <input type="checkbox" id="sync-scroll-toggle-mobile" checked onchange="toggleScrollSync(this.checked)">
+                  <span class="slider-round"></span>
+                </label>
+              </div>
+              <div class="sync-toggle-container mobile-toggle" title="Page Numbers">
+                <span>Page #</span>
+                <label class="switch">
+                  <input type="checkbox" id="page-number-toggle-mobile" checked onchange="togglePageNumbers(this.checked)">
+                  <span class="slider-round"></span>
+                </label>
+              </div>
+            </div>
           </div>
           <div class="split-pane-container">
             

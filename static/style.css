@@ -1892,18 +1892,44 @@ body.theme-light .tweaks-trigger {
 
   .mobile-view-switcher {
     display: flex;
+    align-items: center;
+    justify-content: space-between;
     background: var(--surface-base);
     border-bottom: 1px solid var(--border);
     padding: 6px 12px;
-    gap: 6px;
-    justify-content: center;
+    gap: 8px;
     z-index: 5;
     flex-shrink: 0;
   }
 
+  .mobile-tabs {
+    display: flex;
+    gap: 4px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .mobile-toggles {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .mobile-toggle {
+    margin-right: 0 !important;
+    gap: 4px !important;
+  }
+
+  .mobile-toggle span {
+    display: inline-block !important;
+    font-size: 10px !important;
+    color: var(--fg-muted);
+  }
+
   .mobile-tab-btn {
     flex: 1;
-    padding: 6px 10px;
+    padding: 5px 8px;
     font-size: 11px;
     font-family: var(--font-mono);
     font-weight: 600;
@@ -1913,6 +1939,7 @@ body.theme-light .tweaks-trigger {
     color: var(--fg-muted);
     cursor: pointer;
     transition: var(--transition-smooth);
+    text-align: center;
   }
 
   .mobile-tab-btn.active {
