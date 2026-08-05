@@ -519,8 +519,21 @@ main.main-content {
   position: relative;
 }
 
+.project-group.dragging,
 .history-item.dragging {
-  opacity: 0.45;
+  opacity: 0.35;
+}
+
+.project-group.drag-over-above > .project-row,
+.history-item.drag-over-above {
+  box-shadow: 0 -2px 0 0 var(--fg);
+  border-top-color: var(--fg);
+}
+
+.project-group.drag-over-below > .project-row,
+.history-item.drag-over-below {
+  box-shadow: 0 2px 0 0 var(--fg);
+  border-bottom-color: var(--fg);
 }
 
 .history-item:hover {

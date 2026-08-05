@@ -104,6 +104,43 @@
         });
     }
 
+    let activeDragType = null;
+
+    function saveAppState() {
+        try {
+            if (selectedProjectId !== null && selectedProjectId !== undefined) {
+                localStorage.setItem('pdf_translator_selected_project', String(selectedProjectId));
+            } else {
+                localStorage.removeItem('pdf_translator_selected_project');
+            }
+            if (currentJobId) {
+                localStorage.setItem('pdf_translator_current_job', String(currentJobId));
+            } else {
+                localStorage.removeItem('pdf_translator_current_job');
+            }
+            const openIds = [];
+            document.querySelectorAll('.project-group.open').forEach(el => {
+                if (el.dataset.projectId) openIds.push(String(el.dataset.projectId));
+            });
+            localStorage.setItem('pdf_translator_open_projects', JSON.stringify(openIds));
+        } catch (_) {}
+    }
+
+    function getStoredAppState() {
+        try {
+            const storedProj = localStorage.getItem('pdf_translator_selected_project');
+            const storedJob = localStorage.getItem('pdf_translator_current_job');
+            const storedOpen = JSON.parse(localStorage.getItem('pdf_translator_open_projects') || '[]');
+            return {
+                selectedProjectId: storedProj !== null && storedProj !== '' ? (isNaN(storedProj) ? storedProj : Number(storedProj)) : null,
+                jobId: storedJob || null,
+                openProjects: Array.isArray(storedOpen) ? storedOpen.map(String) : [],
+            };
+        } catch (_) {
+            return { selectedProjectId: null, jobId: null, openProjects: [] };
+        }
+    }
+
     // ---- Sidebar Toggle ----
     window.toggleSidebar = function() {
         sidebarPane.classList.toggle('collapsed');
@@ -134,6 +171,7 @@
         updateUploadFolderHint();
         
         document.querySelectorAll('.history-item').forEach(el => el.classList.remove('active'));
+        saveAppState();
     };
 
     // Initialize UI
@@ -556,6 +594,7 @@
         currentOrigFilename = origFilename;
         currentDlFilename = dlFilename;
         headerDocName.textContent = origFilename;
+        saveAppState();
 
         downloadBtn.style.display = 'flex';
         if (reloadBtn) reloadBtn.style.display = 'flex';
@@ -591,6 +630,7 @@
             el.classList.toggle('selected', selectedProjectId !== null && String(el.dataset.projectId) === String(selectedProjectId));
         });
         updateUploadFolderHint();
+        saveAppState();
     }
 
     async function createProject(name = '', options = {}) {
@@ -741,6 +781,63 @@
         }
     }
 
+    async function saveCurrentProjectOrder() {
+        const projectIds = [];
+        historyContainer.querySelectorAll('.project-group').forEach(el => {
+            if (el.dataset.projectId) projectIds.push(Number(el.dataset.projectId));
+        });
+        try {
+            await fetch('/projects/reorder', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ project_ids: projectIds }),
+            });
+            showToast('Folder order updated');
+            saveAppState();
+        } catch (err) {
+            console.error('Error reordering folders:', err);
+        }
+    }
+
+    async function saveCurrentFileOrderInFolder(container, projectId) {
+        if (!container) return;
+        const jobIds = [];
+        container.querySelectorAll('.history-item').forEach(el => {
+            if (el.dataset.jobId) jobIds.push(el.dataset.jobId);
+        });
+
+        const projectGroup = container.closest('.project-group');
+        if (projectGroup) {
+            const countSpan = projectGroup.querySelector('.project-count');
+            if (countSpan) countSpan.textContent = jobIds.length;
+            let emptyNote = container.querySelector('.empty-folder-note');
+            if (jobIds.length === 0 && !emptyNote) {
+                container.innerHTML = '<div class="empty-folder-note">Empty folder</div>';
+            } else if (jobIds.length > 0 && emptyNote) {
+                emptyNote.remove();
+            }
+        }
+
+        try {
+            await fetch('/files/reorder', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ project_id: projectId ? Number(projectId) : null, job_ids: jobIds }),
+            });
+            showToast('File order updated');
+            saveAppState();
+        } catch (err) {
+            console.error('Error reordering files:', err);
+        }
+    }
+
+    function clearAllDragIndicators() {
+        activeDragType = null;
+        document.querySelectorAll('.dragging, .drag-over-above, .drag-over-below, .drop-target').forEach(el => {
+            el.classList.remove('dragging', 'drag-over-above', 'drag-over-below', 'drop-target');
+        });
+    }
+
     async function loadHistory() {
         const requestId = ++historyRequestId;
         try {
@@ -748,6 +845,14 @@
             const data = await response.json();
             if (requestId !== historyRequestId) return;
             
+            const storedState = getStoredAppState();
+            if (selectedProjectId === null && storedState.selectedProjectId !== null) {
+                selectedProjectId = storedState.selectedProjectId;
+            }
+            if (currentJobId === null && storedState.jobId) {
+                currentJobId = storedState.jobId;
+            }
+
             const projects = data.projects || [];
             if (projects.length === 0) {
                 historyContainer.innerHTML = '<div class="history-loading" style="font-size: 12px; padding: 10px; color: var(--fg-muted);">No folders yet</div>';
@@ -756,10 +861,14 @@
             }
             
             historyContainer.innerHTML = '';
+            let restoredActiveItem = null;
+
             projects.forEach((project) => {
                 const projectDiv = document.createElement('div');
                 projectDiv.className = 'project-group';
                 projectDiv.dataset.projectId = project.id || '';
+                projectDiv.draggable = true;
+
                 const renameControl = project.id ? `
                     <button class="project-action-btn rename-project-btn" type="button" title="Rename folder" aria-label="Rename folder">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
@@ -785,29 +894,91 @@
 
                 const filesContainer = projectDiv.querySelector('.project-files');
                 const projectRow = projectDiv.querySelector('.project-row');
-                const isOpen = project.files.some(item => item.job_id === currentJobId) || historyContainer.children.length === 0;
+                
+                const isStoredOpen = storedState.openProjects.includes(String(project.id));
+                const isJobInProject = currentJobId && project.files.some(item => item.job_id === currentJobId);
+                const isOpen = isStoredOpen || isJobInProject || historyContainer.children.length === 0;
+                
                 projectDiv.classList.toggle('open', isOpen);
-                projectDiv.classList.toggle('selected', selectedProjectId !== null && String(project.id) === String(selectedProjectId));
+                const isSelected = selectedProjectId !== null && String(project.id) === String(selectedProjectId);
+                projectDiv.classList.toggle('selected', isSelected);
+                if (isSelected) {
+                    selectedProjectName = project.name;
+                    updateUploadFolderHint();
+                }
 
                 projectRow.addEventListener('click', () => {
                     selectProject(project);
                     projectDiv.classList.toggle('open');
+                    saveAppState();
                 });
-                if (project.id) {
-                    projectRow.addEventListener('dragover', (e) => {
+
+                // Folder Drag-and-Drop
+                projectDiv.addEventListener('dragstart', (e) => {
+                    if (e.target.closest('.history-item')) return;
+                    activeDragType = 'folder';
+                    e.dataTransfer.setData('text/drag-type', 'folder');
+                    e.dataTransfer.setData('text/project-id', String(project.id || ''));
+                    e.dataTransfer.effectAllowed = 'move';
+                    projectDiv.classList.add('dragging');
+                });
+
+                projectDiv.addEventListener('dragover', (e) => {
+                    if (activeDragType === 'folder') {
+                        e.preventDefault();
+                        const draggedProjectDiv = historyContainer.querySelector('.project-group.dragging');
+                        if (draggedProjectDiv && draggedProjectDiv !== projectDiv) {
+                            const rect = projectDiv.getBoundingClientRect();
+                            const isAbove = e.clientY < rect.top + rect.height / 2;
+                            projectDiv.classList.toggle('drag-over-above', isAbove);
+                            projectDiv.classList.toggle('drag-over-below', !isAbove);
+                        }
+                    } else if (activeDragType === 'file' && project.id) {
                         e.preventDefault();
                         projectDiv.classList.add('drop-target');
-                    });
-                    projectRow.addEventListener('dragleave', () => {
+                    }
+                });
+
+                projectDiv.addEventListener('dragleave', () => {
+                    projectDiv.classList.remove('drag-over-above', 'drag-over-below', 'drop-target');
+                });
+
+                projectDiv.addEventListener('dragend', () => {
+                    clearAllDragIndicators();
+                });
+
+                projectDiv.addEventListener('drop', async (e) => {
+                    e.preventDefault();
+                    if (activeDragType === 'folder') {
+                        e.stopPropagation();
+                        const draggedProjectDiv = historyContainer.querySelector('.project-group.dragging');
+                        if (draggedProjectDiv && draggedProjectDiv !== projectDiv) {
+                            const isAbove = projectDiv.classList.contains('drag-over-above');
+                            if (isAbove) {
+                                historyContainer.insertBefore(draggedProjectDiv, projectDiv);
+                            } else {
+                                historyContainer.insertBefore(draggedProjectDiv, projectDiv.nextSibling);
+                            }
+                            await saveCurrentProjectOrder();
+                        }
+                        clearAllDragIndicators();
+                    } else if (activeDragType === 'file') {
+                        e.stopPropagation();
                         projectDiv.classList.remove('drop-target');
-                    });
-                    projectRow.addEventListener('drop', async (e) => {
-                        e.preventDefault();
-                        projectDiv.classList.remove('drop-target');
-                        const jobId = e.dataTransfer.getData('text/job-id');
-                        await moveFileToProject(jobId, project);
-                    });
-                }
+                        const draggedItem = historyContainer.querySelector('.history-item.dragging');
+                        if (draggedItem) {
+                            const sourceContainer = draggedItem.closest('.project-files');
+                            filesContainer.appendChild(draggedItem);
+                            if (sourceContainer && sourceContainer !== filesContainer) {
+                                const sourceGroup = sourceContainer.closest('.project-group');
+                                const sourceProjId = sourceGroup ? sourceGroup.dataset.projectId : null;
+                                await saveCurrentFileOrderInFolder(sourceContainer, sourceProjId);
+                            }
+                            await saveCurrentFileOrderInFolder(filesContainer, project.id);
+                        }
+                        clearAllDragIndicators();
+                    }
+                });
 
                 const renameBtn = projectDiv.querySelector('.rename-project-btn');
                 if (renameBtn) {
@@ -831,9 +1002,11 @@
 
                 project.files.forEach((item) => {
                     const dateStr = formatDate(item.created_at);
-                    const isActive = (item.job_id === currentJobId) ? 'active' : '';
+                    const isActive = (item.job_id === currentJobId);
+                    if (isActive) restoredActiveItem = item;
+
                     const div = document.createElement('div');
-                    div.className = `history-item ${isActive}`;
+                    div.className = `history-item ${isActive ? 'active' : ''}`;
                     div.draggable = true;
                     div.dataset.jobId = item.job_id;
                     div.innerHTML = `
@@ -849,13 +1022,64 @@
                         </div>
                     `;
 
+                    // File Drag-and-Drop
                     div.addEventListener('dragstart', (e) => {
+                        e.stopPropagation();
+                        activeDragType = 'file';
+                        e.dataTransfer.setData('text/drag-type', 'file');
                         e.dataTransfer.setData('text/job-id', item.job_id);
                         e.dataTransfer.effectAllowed = 'move';
                         div.classList.add('dragging');
                     });
+
+                    div.addEventListener('dragover', (e) => {
+                        if (activeDragType === 'file') {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const draggedItem = historyContainer.querySelector('.history-item.dragging');
+                            if (draggedItem && draggedItem !== div) {
+                                const rect = div.getBoundingClientRect();
+                                const isAbove = e.clientY < rect.top + rect.height / 2;
+                                div.classList.toggle('drag-over-above', isAbove);
+                                div.classList.toggle('drag-over-below', !isAbove);
+                            }
+                        }
+                    });
+
+                    div.addEventListener('dragleave', () => {
+                        div.classList.remove('drag-over-above', 'drag-over-below');
+                    });
+
                     div.addEventListener('dragend', () => {
-                        div.classList.remove('dragging');
+                        clearAllDragIndicators();
+                    });
+
+                    div.addEventListener('drop', async (e) => {
+                        if (activeDragType === 'file') {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const draggedItem = historyContainer.querySelector('.history-item.dragging');
+                            if (draggedItem && draggedItem !== div) {
+                                const sourceContainer = draggedItem.closest('.project-files');
+                                const targetFilesContainer = div.closest('.project-files');
+                                const isAbove = div.classList.contains('drag-over-above');
+                                if (isAbove) {
+                                    targetFilesContainer.insertBefore(draggedItem, div);
+                                } else {
+                                    targetFilesContainer.insertBefore(draggedItem, div.nextSibling);
+                                }
+                                const targetProjectGroup = div.closest('.project-group');
+                                const targetProjectId = targetProjectGroup ? targetProjectGroup.dataset.projectId : null;
+
+                                if (sourceContainer && sourceContainer !== targetFilesContainer) {
+                                    const sourceGroup = sourceContainer.closest('.project-group');
+                                    const sourceProjId = sourceGroup ? sourceGroup.dataset.projectId : null;
+                                    await saveCurrentFileOrderInFolder(sourceContainer, sourceProjId);
+                                }
+                                await saveCurrentFileOrderInFolder(targetFilesContainer, targetProjectId);
+                            }
+                            clearAllDragIndicators();
+                        }
                     });
 
                     div.addEventListener('click', () => {
@@ -898,6 +1122,13 @@
 
                 historyContainer.appendChild(projectDiv);
             });
+
+            // Automatically restore workspace view if currentJobId is set and not loaded yet
+            if (restoredActiveItem && splitScreen.style.display === 'none' && processingScreen.style.display === 'none') {
+                const dlName = restoredActiveItem.filename.replace(/\.pdf$/i, '') + '_TH.pdf';
+                totalPages = restoredActiveItem.pages;
+                showWorkspace(restoredActiveItem.job_id, restoredActiveItem.filename, dlName);
+            }
             
         } catch (err) {
             console.error(err);

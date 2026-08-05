@@ -85,6 +85,7 @@ def init_db():
                 id BIGSERIAL PRIMARY KEY,
                 user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
                 name TEXT NOT NULL,
+                position INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -98,10 +99,13 @@ def init_db():
                 original_filename TEXT NOT NULL,
                 file_size BIGINT DEFAULT 0,
                 pages INTEGER DEFAULT 0,
+                position INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
         cursor.execute("ALTER TABLE translation_history ADD COLUMN IF NOT EXISTS project_id BIGINT")
+        cursor.execute("ALTER TABLE translation_history ADD COLUMN IF NOT EXISTS position INTEGER DEFAULT 0")
+        cursor.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS position INTEGER DEFAULT 0")
         conn.commit()
         conn.close()
         return
@@ -125,6 +129,7 @@ def init_db():
             original_filename TEXT NOT NULL,
             file_size INTEGER DEFAULT 0,
             pages INTEGER DEFAULT 0,
+            position INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -135,6 +140,7 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER,
             name TEXT NOT NULL,
+            position INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -144,6 +150,13 @@ def init_db():
     existing_columns = {row[1] for row in cursor.fetchall()}
     if "project_id" not in existing_columns:
         cursor.execute("ALTER TABLE translation_history ADD COLUMN project_id INTEGER")
+    if "position" not in existing_columns:
+        cursor.execute("ALTER TABLE translation_history ADD COLUMN position INTEGER DEFAULT 0")
+    
+    cursor.execute("PRAGMA table_info(projects)")
+    existing_proj_columns = {row[1] for row in cursor.fetchall()}
+    if "position" not in existing_proj_columns:
+        cursor.execute("ALTER TABLE projects ADD COLUMN position INTEGER DEFAULT 0")
     conn.commit()
     conn.close()
 
@@ -1291,11 +1304,12 @@ def get_history():
                 h.*,
                 COALESCE(p.name, 'Unfiled') AS project_name,
                 p.created_at AS project_created_at,
-                p.updated_at AS project_updated_at
+                p.updated_at AS project_updated_at,
+                COALESCE(p.position, 0) AS project_position
             FROM translation_history h
             LEFT JOIN projects p ON p.id = h.project_id
             WHERE h.user_id = ?
-            ORDER BY COALESCE(p.updated_at, h.created_at) DESC, h.created_at DESC
+            ORDER BY COALESCE(p.position, 0) ASC, COALESCE(p.updated_at, h.created_at) DESC, COALESCE(h.position, 0) ASC, h.created_at DESC
             """,
             (user_id,),
         )
@@ -1306,11 +1320,12 @@ def get_history():
                 h.*,
                 COALESCE(p.name, 'Unfiled') AS project_name,
                 p.created_at AS project_created_at,
-                p.updated_at AS project_updated_at
+                p.updated_at AS project_updated_at,
+                COALESCE(p.position, 0) AS project_position
             FROM translation_history h
             LEFT JOIN projects p ON p.id = h.project_id
             WHERE h.user_id IS NULL
-            ORDER BY COALESCE(p.updated_at, h.created_at) DESC, h.created_at DESC
+            ORDER BY COALESCE(p.position, 0) ASC, COALESCE(p.updated_at, h.created_at) DESC, COALESCE(h.position, 0) ASC, h.created_at DESC
             LIMIT 80
             """
         )
@@ -1318,7 +1333,7 @@ def get_history():
     rows = cursor.fetchall()
     owner_clause, owner_params = _request_owner_clause(user_id, "user_id")
     cursor.execute(
-        f"SELECT id, name, created_at, updated_at FROM projects WHERE {owner_clause} ORDER BY updated_at DESC",
+        f"SELECT id, name, position, created_at, updated_at FROM projects WHERE {owner_clause} ORDER BY COALESCE(position, 0) ASC, updated_at DESC",
         owner_params,
     )
     project_rows = cursor.fetchall()
@@ -1328,6 +1343,7 @@ def get_history():
         projects_map[row["id"]] = {
             "id": row["id"],
             "name": row["name"],
+            "position": row["position"] if row["position"] is not None else 0,
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
             "files": [],
@@ -1343,6 +1359,7 @@ def get_history():
                 "created_at": row["created_at"],
                 "size": row["file_size"],
                 "pages": row["pages"],
+                "position": row["position"] if row["position"] is not None else 0,
                 "project_id": row["project_id"],
                 "project_name": row["project_name"],
             })
@@ -1351,6 +1368,7 @@ def get_history():
                 projects_map[project_key] = {
                     "id": row["project_id"],
                     "name": row["project_name"],
+                    "position": row["project_position"] if ("project_position" in row.keys() and row["project_position"] is not None) else 0,
                     "created_at": row["project_created_at"] or row["created_at"],
                     "updated_at": row["project_updated_at"] or row["created_at"],
                     "files": [],
@@ -1359,8 +1377,10 @@ def get_history():
             
     projects_list = sorted(
         projects_map.values(),
-        key=lambda item: item.get("updated_at") or item.get("created_at") or "",
-        reverse=True,
+        key=lambda item: (
+            item.get("position") if item.get("position") is not None else 0,
+            item.get("updated_at") or item.get("created_at") or ""
+        ),
     )
     response = jsonify({"history": history_list, "projects": projects_list})
     response.headers["Cache-Control"] = "no-store, max-age=0"
@@ -1394,6 +1414,7 @@ def projects():
         SELECT
             p.id,
             p.name,
+            p.position,
             p.created_at,
             p.updated_at,
             COUNT(h.id) AS file_count,
@@ -1402,7 +1423,7 @@ def projects():
         LEFT JOIN translation_history h ON h.project_id = p.id
         WHERE {owner_clause}
         GROUP BY p.id
-        ORDER BY p.updated_at DESC
+        ORDER BY COALESCE(p.position, 0) ASC, p.updated_at DESC
         """,
         owner_params,
     )
@@ -1476,6 +1497,71 @@ def move_file(job_id):
     if not moved:
         return jsonify({"error": "File not found"}), 404
     return jsonify({"success": True, "project": dict(target_project)})
+
+
+@app.route("/files/reorder", methods=["POST"])
+def reorder_files():
+    user_id = session.get("user_id")
+    data = request.get_json() or {}
+    job_ids = data.get("job_ids") or []
+    project_id = data.get("project_id")
+
+    if not isinstance(job_ids, list):
+        return jsonify({"error": "job_ids must be a list"}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+    owner_clause, owner_params = _request_owner_clause(user_id)
+
+    for idx, job_id in enumerate(job_ids):
+        if not re.match(r"^[a-zA-Z0-9_-]+$", str(job_id)):
+            continue
+        if project_id is not None:
+            try:
+                p_id = int(project_id)
+            except (ValueError, TypeError):
+                p_id = None
+            cursor.execute(
+                f"UPDATE translation_history SET position = ?, project_id = ? WHERE job_id = ? AND {owner_clause}",
+                (idx, p_id, job_id, *owner_params),
+            )
+        else:
+            cursor.execute(
+                f"UPDATE translation_history SET position = ? WHERE job_id = ? AND {owner_clause}",
+                (idx, job_id, *owner_params),
+            )
+
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
+
+
+@app.route("/projects/reorder", methods=["POST"])
+def reorder_projects():
+    user_id = session.get("user_id")
+    data = request.get_json() or {}
+    project_ids = data.get("project_ids") or []
+
+    if not isinstance(project_ids, list):
+        return jsonify({"error": "project_ids must be a list"}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+    owner_clause, owner_params = _request_owner_clause(user_id)
+
+    for idx, p_id in enumerate(project_ids):
+        try:
+            pid = int(p_id)
+            cursor.execute(
+                f"UPDATE projects SET position = ? WHERE id = ? AND {owner_clause}",
+                (idx, pid, *owner_params),
+            )
+        except (ValueError, TypeError):
+            continue
+
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
 
 
 def delete_translation_files(job_id):
