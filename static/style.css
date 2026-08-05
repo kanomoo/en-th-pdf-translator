@@ -87,8 +87,8 @@ body {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 800px;
-  height: 800px;
+  width: min(800px, 100vw);
+  height: min(800px, 100vh);
   background: radial-gradient(circle, rgba(255, 255, 255, 0.015) 0%, transparent 70%);
   pointer-events: none;
   z-index: 0;
@@ -1818,6 +1818,10 @@ body.theme-light .tweaks-trigger {
 .sidebar-overlay {
   position: fixed;
   inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
   background: rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
@@ -1825,6 +1829,30 @@ body.theme-light .tweaks-trigger {
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.sidebar-close-btn {
+  display: none;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg-muted);
+  place-items: center;
+  cursor: pointer;
+}
+
+.sidebar-close-btn:hover,
+.sidebar-close-btn:focus-visible {
+  border-color: var(--border-focus);
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+
+body.mobile-sidebar-open {
+  overflow: hidden;
 }
 
 .sidebar-overlay.active {
@@ -1843,7 +1871,7 @@ body.theme-light .tweaks-trigger {
     top: 0;
     left: 0;
     bottom: 0;
-    width: 280px;
+    width: min(86vw, 300px);
     height: 100vh;
     z-index: 9999;
     background: var(--bg);
@@ -1857,6 +1885,7 @@ body.theme-light .tweaks-trigger {
     transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     padding: 0;
     pointer-events: auto; /* Always interactive when shown */
+    overscroll-behavior: contain;
   }
 
   /* Desktop collapsed class must NOT interfere on mobile */
@@ -1877,6 +1906,13 @@ body.theme-light .tweaks-trigger {
     padding: 16px;
     border-bottom: 1px solid var(--border);
     display: flex !important;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: max(16px, env(safe-area-inset-top));
+  }
+
+  .sidebar-close-btn {
+    display: grid;
   }
 
   .new-btn, .explorer-toolbar {
