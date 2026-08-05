@@ -526,15 +526,23 @@
                 const scale = targetWidth / unscaledViewport.width;
                 const viewport = page.getViewport({ scale: scale });
                 
+                const wrapper = document.createElement('div');
+                wrapper.className = 'pdf-page-wrapper';
+
                 const pageDiv = document.createElement('div');
                 pageDiv.className = 'pdf-page-container';
                 pageDiv.style.position = 'relative';
-                pageDiv.style.margin = '0 auto 20px auto';
+                pageDiv.style.margin = '0 auto';
                 pageDiv.style.width = viewport.width + 'px';
                 pageDiv.style.height = viewport.height + 'px';
                 pageDiv.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
                 pageDiv.style.backgroundColor = 'white'; // Ensure PDF background is white
                 
+                const pageBadge = document.createElement('div');
+                pageBadge.className = 'pdf-page-badge';
+                pageBadge.textContent = `Page ${i} of ${pdf.numPages}`;
+                pageDiv.appendChild(pageBadge);
+
                 const outputScale = (window.devicePixelRatio || 1) * 1.5; // Render at 1.5x resolution for sharper scaling
 
                 const canvas = document.createElement('canvas');
@@ -572,7 +580,14 @@
                     textDivs: []
                 });
                 
-                container.appendChild(pageDiv);
+                const pageFooter = document.createElement('div');
+                pageFooter.className = 'pdf-page-footer-label';
+                pageFooter.textContent = `Page ${i} / ${pdf.numPages}`;
+
+                wrapper.appendChild(pageDiv);
+                wrapper.appendChild(pageFooter);
+
+                container.appendChild(wrapper);
             }
         } catch (err) {
             console.error('Error rendering PDF:', err);
@@ -593,7 +608,7 @@
         currentJobId = jobId;
         currentOrigFilename = origFilename;
         currentDlFilename = dlFilename;
-        headerDocName.textContent = origFilename;
+        headerDocName.textContent = totalPages ? `${origFilename} (${totalPages} Pages)` : origFilename;
         saveAppState();
 
         downloadBtn.style.display = 'flex';

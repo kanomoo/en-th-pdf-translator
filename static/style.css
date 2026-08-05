@@ -1254,6 +1254,58 @@ body.theme-light .pane-right {
   font-weight: 600;
 }
 
+/* PDF Page Number Badges & Footers */
+.pdf-page-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 28px;
+  width: 100%;
+}
+
+.pdf-page-badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 10;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: #ffffff;
+  padding: 4px 10px;
+  border-radius: 99px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  pointer-events: none;
+  user-select: none;
+}
+
+body.theme-light .pdf-page-badge {
+  background: rgba(255, 255, 255, 0.88);
+  color: #000000;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.pdf-page-footer-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg-muted);
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  padding: 3px 12px;
+  border-radius: 99px;
+  margin-top: 10px;
+  letter-spacing: 0.05em;
+  user-select: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
 .document-page-card {
   background-color: var(--surface-card);
   background-image: radial-gradient(
